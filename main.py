@@ -5,6 +5,7 @@ import time
 from collections import deque
 
 import pyqtgraph as pg
+import winsound
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
@@ -25,7 +26,7 @@ SIGNALS = [
         "name": "MAP",
         "index": 2,
         "min": 20,
-        "max": 160,
+        "max": 165,
         "func": lambda x: x,
         "labelFunc": lambda x: f'{math.trunc(x)}  kPa',
         "graph": True,
