@@ -1,38 +1,33 @@
-import sys
-import serial
-import threading
-import time
 import csv
-import winsound
+import math
+import sys
+import time
 from collections import deque
 
+import pyqtgraph as pg
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QLabel, QGridLayout
 )
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont
 
-import pyqtgraph as pg
-
-
-# ==========================================
-# CONFIGURAÇÃO INTERNA (HARDCODED)
-# ==========================================
+from serial_reader_mock import SerialReaderMock
 
 PORT = "COM5"
 BAUDRATE = 115200
-LOG_PREFIX = "DR"
+LOG_PREFIX = "#D01"
 LOG_FILE = "log_stream.csv"
 
-ALARM_COOLDOWN = 2  # segundos entre alarmes
+ALARM_COOLDOWN = 2
 
 SIGNALS = [
     {
         "name": "MAP",
         "index": 2,
         "min": 20,
-        "max": 110,
+        "max": 160,
         "func": lambda x: x,
+        "labelFunc": lambda x: f'{math.trunc(x)}  kPa',
         "graph": True,
         "alarm": True
     },
@@ -41,66 +36,53 @@ SIGNALS = [
         "index": 1,
         "min": 700,
         "max": 7000,
-        "func": lambda x: x,
+        "func": lambda x: math.trunc(x),
+        "labelFunc": lambda x: f'{x}',
+        "graph": False,
+        "alarm": False
+    },
+    {
+        "name": "Lambda",
+        "index": 6,
+        "min": 0,
+        "max": 2000,
+        "func": lambda x: round(x / 1000, 2),
+        "labelFunc": lambda x: f'{x}',
+        "graph": False,
+        "alarm": False
+    },
+    {
+        "name": "Trim",
+        "index": 26,
+        "min": -10,
+        "max": 10,
+        "func": lambda x: round((1000 - x) / 10, 2),
+        "labelFunc": lambda x: f'{x} %',
+        "graph": False,
+        "alarm": False
+    },
+    {
+        "name": "Lambda Target",
+        "index": 25,
+        "min": 0.6,
+        "max": 1.2,
+        "func": lambda x: round(x / 1000, 2),
+        "labelFunc": lambda x: f'{x}',
+        "graph": False,
+        "alarm": False
+    },
+    {
+        "name": "Ign",
+        "index": 10,
+        "min": 0,
+        "max": 30,
+        "func": lambda x: math.trunc(x),
+        "labelFunc": lambda x: f'{x} º',
         "graph": False,
         "alarm": False
     },
 ]
 
-
-# ==========================================
-# Serial com reconexão automática
-# ==========================================
-
-class SerialReader(threading.Thread):
-
-    def __init__(self, port, baudrate, callback):
-        super().__init__()
-        self.port = port
-        self.baudrate = baudrate
-        self.callback = callback
-        self.running = True
-        self.serial = None
-
-    def connect(self):
-        while self.running:
-            try:
-                print("Tentando conectar...")
-                self.serial = serial.Serial(self.port, self.baudrate, timeout=1)
-                self.serial.write(b"DR1\n")
-                print("Conectado.")
-                return
-            except:
-                print("Falha. Tentando novamente...")
-                time.sleep(3)
-
-    def run(self):
-        self.connect()
-
-        while self.running:
-            try:
-                line = self.serial.readline().decode("utf-8").strip()
-                if line:
-                    self.callback(line)
-            except:
-                print("Conexão perdida. Reconectando...")
-                try:
-                    self.serial.close()
-                except:
-                    pass
-                self.connect()
-
-    def stop(self):
-        self.running = False
-        try:
-            self.serial.close()
-        except:
-            pass
-
-
-# ==========================================
-# GUI Principal
-# ==========================================
 
 class Dashboard(QWidget):
 
@@ -121,7 +103,6 @@ class Dashboard(QWidget):
 
         self.row = 0
 
-        # Criar labels automaticamente a partir do SIGNALS
         for signal in SIGNALS:
             self.create_label(signal["name"])
 
@@ -139,7 +120,7 @@ class Dashboard(QWidget):
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_graph)
-        self.timer.start(50)
+        self.timer.start(100)
 
         # Log
         self.log_file = open(LOG_FILE, "a", newline="")
@@ -161,22 +142,18 @@ class Dashboard(QWidget):
 
         self.row += 1
 
-    # ==========================================
-    # Processamento de dados
-    # ==========================================
-
     def process_line(self, line):
+        if not line.startswith(LOG_PREFIX):
+            return
 
-        parts = line.split(",")
-
+        parts = line.split(";")
         if len(parts) < 2:
             return
 
         # LOG
-        if parts[0].startswith(LOG_PREFIX):
-            timestamp = int(time.time() * 1000)
-            self.csv_writer.writerow([timestamp] + parts)
-            self.log_file.flush()
+        timestamp = int(time.time() * 1000)
+        self.csv_writer.writerow([timestamp] + parts)
+        self.log_file.flush()
 
         for signal in SIGNALS:
 
@@ -187,22 +164,23 @@ class Dashboard(QWidget):
             try:
                 raw = float(parts[idx])
                 value = signal["func"](raw)
+                valueStr = signal["labelFunc"](value)
 
-                self.update_display(signal, value)
+                self.update_display(signal, value, valueStr)
 
             except:
                 pass
 
-    def update_display(self, signal, value):
+    def update_display(self, signal, value, valueStr):
 
         name = signal["name"]
         label = self.labels[name]
 
-        label.setText(f"{name} {round(value,2)}")
+        label.setText(f"{name} {valueStr}")
 
         # Cor por faixa
         if value < signal["min"]:
-            color = "blue"
+            color = "red"
             self.trigger_alarm(signal)
         elif value > signal["max"]:
             color = "red"
@@ -217,29 +195,21 @@ class Dashboard(QWidget):
         if signal["graph"]:
             self.buffers[name].append(value)
 
-    # ==========================================
-    # Alarme sonoro
-    # ==========================================
-
     def trigger_alarm(self, signal):
-
-        if not signal["alarm"]:
-            return
-
-        name = signal["name"]
-        now = time.time()
-
-        if now - self.last_alarm_time[name] < ALARM_COOLDOWN:
-            return
-
-        self.last_alarm_time[name] = now
-
-        # beep crítico
-        winsound.Beep(2000, 300)
-
-    # ==========================================
-    # Atualização gráfico
-    # ==========================================
+        pass
+        # if not signal["alarm"]:
+        #     return
+        #
+        # name = signal["name"]
+        # now = time.time()
+        #
+        # if now - self.last_alarm_time[name] < ALARM_COOLDOWN:
+        #     return
+        #
+        # self.last_alarm_time[name] = now
+        #
+        # # beep crítico
+        # winsound.Beep(2000, 300)
 
     def update_graph(self):
         for name, curve in self.curves.items():
@@ -255,7 +225,8 @@ def main():
 
     dashboard = Dashboard()
 
-    serial_thread = SerialReader(PORT, BAUDRATE, dashboard.process_line)
+    serial_thread = SerialReaderMock(PORT, BAUDRATE)
+    serial_thread.emitter.connect(dashboard.process_line)
     serial_thread.start()
 
     app.exec()
