@@ -2,24 +2,29 @@ import threading
 import time
 
 import serial
+from PyQt6.QtCore import pyqtSignal, QThread
 
 
-class SerialReader(threading.Thread):
+class SerialReader(QThread):
+    emitter = pyqtSignal(str)
 
-    def __init__(self, port, baudrate, callback):
+    def __init__(self, port, baudrate):
         super().__init__()
         self.port = port
         self.baudrate = baudrate
-        self.callback = callback
         self.running = True
         self.serial = None
+        self.d01 = None
+        self.d02 = None
 
     def connect(self):
         while self.running:
             try:
                 print("Tentando conectar...")
                 self.serial = serial.Serial(self.port, self.baudrate, timeout=1)
-                self.serial.write(b"DR1\n")
+                self.serial.write(b"#D50\n")
+                self.serial.readline()
+                self.serial.write(b"#D01\n")
                 print("Conectado.")
                 return
             except:
@@ -32,8 +37,15 @@ class SerialReader(threading.Thread):
         while self.running:
             try:
                 line = self.serial.readline().decode("utf-8").strip()
-                if line:
-                    self.callback(line)
+                if line.startswith("#D01"):
+                    self.d01 = line
+                elif line.startswith("#D02"):
+                    self.d02 = line
+
+                if self.d01 and self.d02:
+                    self.emitter.emit(f'{self.d01};{self.d02}')
+                    self.d01 = None
+                    self.d02 = None
             except:
                 print("Conexão perdida. Reconectando...")
                 try:

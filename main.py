@@ -5,21 +5,21 @@ import time
 from collections import deque
 
 import pyqtgraph as pg
-import winsound
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QThread
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QLabel, QGridLayout
 )
 
-from serial_reader_mock import SerialReaderMock
+from alarm_worker import AlarmWorker
+from serial_reader import SerialReader
 
-PORT = "COM5"
+PORT = "COM2"
 BAUDRATE = 115200
 LOG_PREFIX = "#D01"
 LOG_FILE = "log_stream.csv"
 
-ALARM_COOLDOWN = 2
+ALARM_COOLDOWN = 1
 
 SIGNALS = [
     {
@@ -123,6 +123,14 @@ class Dashboard(QWidget):
         self.timer.timeout.connect(self.update_graph)
         self.timer.start(100)
 
+        self.alarm_thread = QThread()
+        self.alarm_worker = AlarmWorker()
+
+        self.alarm_worker.moveToThread(self.alarm_thread)
+        self.alarm_thread.start()
+
+        self.global_alarm = False
+
         # Log
         self.log_file = open(LOG_FILE, "a", newline="")
         self.csv_writer = csv.writer(self.log_file)
@@ -150,6 +158,9 @@ class Dashboard(QWidget):
         parts = line.split(";")
         if len(parts) < 2:
             return
+
+        self.global_alarm = False
+        self.alarm_worker.notify_data_received()
 
         # LOG
         timestamp = int(time.time() * 1000)
@@ -179,13 +190,14 @@ class Dashboard(QWidget):
 
         label.setText(f"{name} {valueStr}")
 
+        in_alarm = False
         # Cor por faixa
         if value < signal["min"]:
             color = "red"
-            self.trigger_alarm(signal)
+            in_alarm = True
         elif value > signal["max"]:
             color = "red"
-            self.trigger_alarm(signal)
+            in_alarm = True
         else:
             color = "lime"
 
@@ -193,24 +205,30 @@ class Dashboard(QWidget):
             f"background-color:black; color:{color};"
         )
 
+        if in_alarm:
+            self.global_alarm = True
+
         if signal["graph"]:
             self.buffers[name].append(value)
 
-    def trigger_alarm(self, signal):
-        pass
-        # if not signal["alarm"]:
-        #     return
-        #
-        # name = signal["name"]
-        # now = time.time()
-        #
-        # if now - self.last_alarm_time[name] < ALARM_COOLDOWN:
-        #     return
-        #
-        # self.last_alarm_time[name] = now
-        #
-        # # beep crítico
-        # winsound.Beep(2000, 300)
+        self.alarm_worker.set_alarm_state(self.global_alarm)
+
+    # def trigger_alarm(self, signal):
+    #     if not signal["alarm"]:
+    #         return
+    #
+    #     name = signal["name"]
+    #     now = time.time()
+    #
+    #     if now - self.last_alarm_time[name] < ALARM_COOLDOWN:
+    #         return
+    #
+    #     self.last_alarm_time[name] = now
+    #
+    #     if signal["name"] == "MAP":
+    #         self.alarm_worker.trigger.emit(2000, 50, 1000)
+    #     else:
+    #         self.alarm_worker.trigger.emit(1500, 200, 1000)
 
     def update_graph(self):
         for name, curve in self.curves.items():
@@ -226,13 +244,15 @@ def main():
 
     dashboard = Dashboard()
 
-    serial_thread = SerialReaderMock(PORT, BAUDRATE)
+    # serial_thread = SerialReaderMock(PORT, BAUDRATE)
+    serial_thread = SerialReader(PORT, BAUDRATE)
     serial_thread.emitter.connect(dashboard.process_line)
     serial_thread.start()
 
     app.exec()
 
     serial_thread.stop()
+    dashboard.alarm_thread.quit()
 
 
 if __name__ == "__main__":
