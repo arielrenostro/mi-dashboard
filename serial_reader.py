@@ -23,7 +23,12 @@ class SerialReader(QThread):
                 print("Tentando conectar...")
                 self.serial = serial.Serial(self.port, self.baudrate, timeout=1)
                 self.serial.write(b"#D50\n")
-                self.serial.readline()
+                print(f'Recebido: {self.serial.readline()}')
+                print(f'Recebido: {self.serial.readline()}')
+                self.serial.write(b"\n")
+                time.sleep(0.5)
+                self.serial.write(b"\n")
+                time.sleep(0.5)
                 self.serial.write(b"#D01\n")
                 print("Conectado.")
                 return

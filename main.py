@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 from alarm_worker import AlarmWorker
 from serial_reader import SerialReader
 
-PORT = "COM2"
+PORT = "COM1"
 BAUDRATE = 115200
 LOG_PREFIX = "#D01"
 LOG_FILE = "log_stream.csv"
@@ -123,11 +123,11 @@ class Dashboard(QWidget):
         self.timer.timeout.connect(self.update_graph)
         self.timer.start(100)
 
-        self.alarm_thread = QThread()
-        self.alarm_worker = AlarmWorker()
-
-        self.alarm_worker.moveToThread(self.alarm_thread)
-        self.alarm_thread.start()
+        # self.alarm_thread = QThread()
+        # self.alarm_worker = AlarmWorker()
+        #
+        # self.alarm_worker.moveToThread(self.alarm_thread)
+        # self.alarm_thread.start()
 
         self.global_alarm = False
 
@@ -160,7 +160,7 @@ class Dashboard(QWidget):
             return
 
         self.global_alarm = False
-        self.alarm_worker.notify_data_received()
+        # self.alarm_worker.notify_data_received()
 
         # LOG
         timestamp = int(time.time() * 1000)
@@ -211,7 +211,7 @@ class Dashboard(QWidget):
         if signal["graph"]:
             self.buffers[name].append(value)
 
-        self.alarm_worker.set_alarm_state(self.global_alarm)
+        # self.alarm_worker.set_alarm_state(self.global_alarm)
 
     # def trigger_alarm(self, signal):
     #     if not signal["alarm"]:
@@ -252,7 +252,7 @@ def main():
     app.exec()
 
     serial_thread.stop()
-    dashboard.alarm_thread.quit()
+    # dashboard.alarm_thread.quit()
 
 
 if __name__ == "__main__":
