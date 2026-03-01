@@ -1,7 +1,5 @@
-import threading
 import time
 
-import serial
 from PyQt6.QtCore import QThread, pyqtSignal
 
 
@@ -23,7 +21,9 @@ class SerialReaderMock(QThread):
         self.connect()
 
         while self.running:
-            with open("C:\\Users\\ariel\\OneDrive\\Carros\\206\\Master Injection\\Datalogs\\MecOk - 6\\-1771782744905.csv", 'r') as f:
+            with open(
+                    "C:\\Users\\ariel\\OneDrive\\Carros\\206\\Master Injection\\Datalogs\\MecOk - 6\\-1771782744905.csv",
+                    'r') as f:
                 # for line in f:
                 #     parts = line.split(';')
                 #     try:

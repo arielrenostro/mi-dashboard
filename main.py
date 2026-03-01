@@ -1,238 +1,18 @@
-import csv
-import math
 import sys
-import time
-from collections import deque
 
-import pyqtgraph as pg
-from PyQt6.QtCore import Qt, QTimer, QThread
-from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QLabel, QGridLayout
+    QApplication
 )
 
-from alarm_worker import AlarmWorker
-from serial_reader import SerialReader
+from app.alarm.alarm_worker import AlarmWorker
+from app.dashboard.dashboard import Dashboard
+from app.log_writer.log_writer import LogWriter
+from app.reader.serial_reader_mock import SerialReaderMock
 
 PORT = "COM1"
 BAUDRATE = 115200
-LOG_PREFIX = "#D01"
 LOG_FILE = "log_stream.csv"
-
-ALARM_COOLDOWN = 1
-
-SIGNALS = [
-    {
-        "name": "MAP",
-        "index": 2,
-        "min": 20,
-        "max": 165,
-        "func": lambda x: x,
-        "labelFunc": lambda x: f'{math.trunc(x)}  kPa',
-        "graph": True,
-        "alarm": True
-    },
-    {
-        "name": "RPM",
-        "index": 1,
-        "min": 700,
-        "max": 7000,
-        "func": lambda x: math.trunc(x),
-        "labelFunc": lambda x: f'{x}',
-        "graph": False,
-        "alarm": False
-    },
-    {
-        "name": "Lambda",
-        "index": 6,
-        "min": 0,
-        "max": 2000,
-        "func": lambda x: round(x / 1000, 2),
-        "labelFunc": lambda x: f'{x}',
-        "graph": False,
-        "alarm": False
-    },
-    {
-        "name": "Trim",
-        "index": 26,
-        "min": -10,
-        "max": 10,
-        "func": lambda x: round((1000 - x) / 10, 2),
-        "labelFunc": lambda x: f'{x} %',
-        "graph": False,
-        "alarm": False
-    },
-    {
-        "name": "Lambda Target",
-        "index": 25,
-        "min": 0.6,
-        "max": 1.2,
-        "func": lambda x: round(x / 1000, 2),
-        "labelFunc": lambda x: f'{x}',
-        "graph": False,
-        "alarm": False
-    },
-    {
-        "name": "Ign",
-        "index": 10,
-        "min": 0,
-        "max": 30,
-        "func": lambda x: math.trunc(x),
-        "labelFunc": lambda x: f'{x} º',
-        "graph": False,
-        "alarm": False
-    },
-]
-
-
-class Dashboard(QWidget):
-
-    def __init__(self):
-        super().__init__()
-
-        self.setWindowTitle("Logger PRO")
-        self.showFullScreen()
-
-        self.layout = QVBoxLayout()
-        self.setLayout(self.layout)
-
-        self.grid = QGridLayout()
-        self.layout.addLayout(self.grid)
-
-        self.labels = {}
-        self.last_alarm_time = {}
-
-        self.row = 0
-
-        for signal in SIGNALS:
-            self.create_label(signal["name"])
-
-        # Gráfico
-        self.graph = pg.PlotWidget()
-        self.layout.addWidget(self.graph)
-
-        self.curves = {}
-        self.buffers = {}
-
-        for signal in SIGNALS:
-            if signal["graph"]:
-                self.curves[signal["name"]] = self.graph.plot()
-                self.buffers[signal["name"]] = deque(maxlen=300)
-
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update_graph)
-        self.timer.start(100)
-
-        # self.alarm_thread = QThread()
-        # self.alarm_worker = AlarmWorker()
-        #
-        # self.alarm_worker.moveToThread(self.alarm_thread)
-        # self.alarm_thread.start()
-
-        self.global_alarm = False
-
-        # Log
-        self.log_file = open(LOG_FILE, "a", newline="")
-        self.csv_writer = csv.writer(self.log_file)
-
-    def create_label(self, name):
-        label = QLabel(f"{name} --")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        font = QFont("Arial", 56)
-        font.setBold(True)
-        label.setFont(font)
-
-        label.setStyleSheet("background-color:black; color:white;")
-
-        self.grid.addWidget(label, self.row // 2, self.row % 2)
-        self.labels[name] = label
-        self.last_alarm_time[name] = 0
-
-        self.row += 1
-
-    def process_line(self, line):
-        if not line.startswith(LOG_PREFIX):
-            return
-
-        parts = line.split(";")
-        if len(parts) < 2:
-            return
-
-        self.global_alarm = False
-        # self.alarm_worker.notify_data_received()
-
-        # LOG
-        timestamp = int(time.time() * 1000)
-        self.csv_writer.writerow([timestamp] + parts)
-        self.log_file.flush()
-
-        for signal in SIGNALS:
-
-            idx = signal["index"]
-            if idx >= len(parts):
-                continue
-
-            try:
-                raw = float(parts[idx])
-                value = signal["func"](raw)
-                valueStr = signal["labelFunc"](value)
-
-                self.update_display(signal, value, valueStr)
-
-            except:
-                pass
-
-    def update_display(self, signal, value, valueStr):
-
-        name = signal["name"]
-        label = self.labels[name]
-
-        label.setText(f"{name} {valueStr}")
-
-        in_alarm = False
-        # Cor por faixa
-        if value < signal["min"]:
-            color = "red"
-            in_alarm = True
-        elif value > signal["max"]:
-            color = "red"
-            in_alarm = True
-        else:
-            color = "lime"
-
-        label.setStyleSheet(
-            f"background-color:black; color:{color};"
-        )
-
-        if in_alarm:
-            self.global_alarm = True
-
-        if signal["graph"]:
-            self.buffers[name].append(value)
-
-        # self.alarm_worker.set_alarm_state(self.global_alarm)
-
-    # def trigger_alarm(self, signal):
-    #     if not signal["alarm"]:
-    #         return
-    #
-    #     name = signal["name"]
-    #     now = time.time()
-    #
-    #     if now - self.last_alarm_time[name] < ALARM_COOLDOWN:
-    #         return
-    #
-    #     self.last_alarm_time[name] = now
-    #
-    #     if signal["name"] == "MAP":
-    #         self.alarm_worker.trigger.emit(2000, 50, 1000)
-    #     else:
-    #         self.alarm_worker.trigger.emit(1500, 200, 1000)
-
-    def update_graph(self):
-        for name, curve in self.curves.items():
-            curve.setData(list(self.buffers[name]))
+ALARM_SOUND = "alarm.wav"
 
 
 # ==========================================
@@ -242,17 +22,27 @@ class Dashboard(QWidget):
 def main():
     app = QApplication(sys.argv)
 
-    dashboard = Dashboard()
+    alarm_worker = AlarmWorker(ALARM_SOUND)
+    alarm_worker.start()
 
-    # serial_thread = SerialReaderMock(PORT, BAUDRATE)
-    serial_thread = SerialReader(PORT, BAUDRATE)
+    dashboard = Dashboard(
+        alarm_worker=alarm_worker,
+    )
+    log_writer = LogWriter(
+        log_file=LOG_FILE,
+    )
+
+    serial_thread = SerialReaderMock(PORT, BAUDRATE)
+    # serial_thread = SerialReader(PORT, BAUDRATE)
     serial_thread.emitter.connect(dashboard.process_line)
+    serial_thread.emitter.connect(log_writer.write)
     serial_thread.start()
 
     app.exec()
 
+    dashboard.close()
+    alarm_worker.stop()
     serial_thread.stop()
-    # dashboard.alarm_thread.quit()
 
 
 if __name__ == "__main__":
