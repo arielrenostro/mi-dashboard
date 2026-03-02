@@ -22,7 +22,7 @@ class SerialReaderMock(QThread):
 
         while self.running:
             with open(
-                    "C:\\Users\\ariel\\OneDrive\\Carros\\206\\Master Injection\\Datalogs\\MecOk - 6\\-1771782744905.csv",
+                    "C:\\Users\\ariel\\OneDrive\\Carros\\206\\Master Injection\\Datalogs\\4Bar - 9\\log_stream_fixed.csv",
                     'r') as f:
                 # for line in f:
                 #     parts = line.split(';')
@@ -35,7 +35,7 @@ class SerialReaderMock(QThread):
 
                 for line in f:
                     self.line += 1
-                    if self.line < 4800:
+                    if self.line < 12100:
                         continue
                     if not self.running:
                         break

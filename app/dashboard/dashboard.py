@@ -49,6 +49,7 @@ class Dashboard(QWidget):
             for col_idx in range(len(grid[row_idx])):
                 signal = grid[row_idx][col_idx]
                 name = signal.value['name']
+                unit = signal.value['unit']
 
                 cell_widget = QWidget()
                 cell_widget.setStyleSheet("background-color:black;")
@@ -58,7 +59,10 @@ class Dashboard(QWidget):
                 cell_layout.setContentsMargins(8, 4, 8, 4)
                 cell_layout.setSpacing(0)
 
-                small_label = QLabel(f"{name}")
+                if unit != "":
+                    small_label = QLabel(f"{name} ({unit})")
+                else:
+                    small_label = QLabel(f"{name}")
                 small_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
                 small_font = QFont("Arial", 14)
@@ -179,23 +183,25 @@ class Dashboard(QWidget):
 
         parsed_data = {}
         for signal in Signals:
-            idx = signal.value["index"]
-            if idx >= len(parts):
-                continue
-
             try:
-                raw = parts[idx]
-                value = signal.value["converter"](raw)
-                value_str = signal.value["for_label"](value)
+                if signal.value.get("calculated", False):
+                    raw = signal.value["value"](parsed_data)
+                    value = raw
+                else:
+                    idx = signal.value["index"]
+                    if idx >= len(parts):
+                        continue
+                    raw = parts[idx]
+                    value = signal.value["converter"](raw)
 
                 parsed_data[signal] = {
                     "signal": signal,
                     "raw": raw,
                     "value": value,
-                    "value_str": value_str,
+                    "value_str": signal.value["for_label"](value),
                 }
-            except:
-                pass
+            except Exception as e:
+                print(e)
 
         for signal in self.labels.keys():
             try:
@@ -203,7 +209,6 @@ class Dashboard(QWidget):
                 self.update_display(signal, data)
             except Exception as e:
                 print(e)
-                pass
 
         for signal, buff in self.buffers.items():
             data = parsed_data[signal]
@@ -215,14 +220,14 @@ class Dashboard(QWidget):
         color = signal.value["color"]
 
         in_alarm = False
-        min_ = alarm["min"] if isinstance(alarm["min"], (int, float, None)) else alarm["min"](value)
-        max_ = alarm["max"] if isinstance(alarm["max"], (int, float, None)) else alarm["max"](value)
+        min_ = alarm["min"] if alarm["min"] is None or isinstance(alarm["min"], (int, float)) else alarm["min"](value)
+        max_ = alarm["max"] if alarm["max"] is None or isinstance(alarm["max"], (int, float)) else alarm["max"](value)
 
-        if value < min_:
+        if min_ is not None and value < min_:
             color = "red"
             in_alarm = alarm["enabled"]
 
-        elif value > max_:
+        elif max_ is not None and value > max_:
             color = "red"
             in_alarm = alarm["enabled"]
 
@@ -256,14 +261,13 @@ class Dashboard(QWidget):
                     [value],
                 )
 
-                labels[signal].setText(
-                    signal.value["for_label"](value)
-                )
+                unit = signal.value['unit']
+                label_text = signal.value["for_label"](value)
+                if unit != "":
+                    label_text = f"{label_text} {unit}"
 
-                labels[signal].setPos(
-                    value_index,
-                    value,
-                )
+                labels[signal].setText(label_text)
+                labels[signal].setPos(value_index, value)
 
     def _fire_field_alarm(self, signal, container, label):
         def _fn(i):

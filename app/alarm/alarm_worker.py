@@ -35,8 +35,8 @@ class AlarmWorker(QThread):
                     if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
                         self.player.stop()
                         self.emitter.emit(False)
-            except:
-                pass
+            except Exception as e:
+                print(e)
             self.msleep(100)
 
     def stop(self):

@@ -8,6 +8,7 @@ class Signals(enum.Enum):
         "index": 1,
         "converter": lambda x: math.trunc(float(x)),
         "for_label": lambda x: f'{x}',
+        "unit": "RPM",
         "min": 0,
         "max": 7000,
         "color": "red",
@@ -22,7 +23,8 @@ class Signals(enum.Enum):
         "name": "MAP",
         "index": 2,
         "converter": lambda x: float(x),
-        "for_label": lambda x: f'{math.trunc(x)}  kPa',
+        "for_label": lambda x: f'{math.trunc(x)}',
+        "unit": "kPa",
         "min": 20,
         "max": 200,
         "color": "fuchsia",
@@ -37,22 +39,24 @@ class Signals(enum.Enum):
         "name": "λ",
         "index": 6,
         "converter": lambda x: round(float(x) / 1000, 2),
-        "for_label": lambda x: f'{x:.2f} λ',
+        "for_label": lambda x: f'{x:.2f}',
+        "unit": "λ",
         "min": 0.5,
         "max": 1.5,
         "color": "lime",
         "alarm": {
-            "enabled": True,
+            "enabled": False,
             "min": 0.70,
             "max": 9999.0,
         },
     }
 
-    INJ_UTIL= {
+    INJ_UTIL = {
         "name": "Inj. Duty",
         "index": 8,
         "converter": lambda x: math.trunc(float(x)),
-        "for_label": lambda x: f'{x} %',
+        "for_label": lambda x: f'{x}',
+        "unit": "%",
         "min": 0,
         "max": 100,
         "color": "lime",
@@ -63,11 +67,28 @@ class Signals(enum.Enum):
         },
     }
 
+    VEValue = {
+        "name": "VE Value",
+        "index": 9,
+        "converter": lambda x: round(float(x) / 10, 2),
+        "for_label": lambda x: f'{x}',
+        "unit": "%",
+        "min": 0,
+        "max": 1200,
+        "color": "lime",
+        "alarm": {
+            "enabled": False,
+            "min": None,
+            "max": None,
+        },
+    }
+
     IGN = {
         "name": "Ign",
         "index": 10,
         "converter": lambda x: math.trunc(float(x)),
-        "for_label": lambda x: f'{x} º',
+        "for_label": lambda x: f'{x}',
+        "unit": "º",
         "min": -45,
         "max": 45,
         "color": "lime",
@@ -82,10 +103,11 @@ class Signals(enum.Enum):
         "name": "CLT",
         "index": 19,
         "converter": lambda x: math.trunc(float(x) - 273),
-        "for_label": lambda x: f'{x} ºC',
+        "for_label": lambda x: f'{x}',
+        "unit": "ºC",
         "min": -20,
         "max": 120,
-        "color": "lime",
+        "color": "orange",
         "alarm": {
             "enabled": True,
             "min": 0,
@@ -97,10 +119,11 @@ class Signals(enum.Enum):
         "name": "IAT",
         "index": 20,
         "converter": lambda x: math.trunc(float(x) - 273),
-        "for_label": lambda x: f'{x} ºC',
+        "for_label": lambda x: f'{x}',
+        "unit": "ºC",
         "min": -20,
         "max": 120,
-        "color": "lime",
+        "color": "DodgerBlue",
         "alarm": {
             "enabled": False,
             "min": 0,
@@ -112,7 +135,8 @@ class Signals(enum.Enum):
         "name": "Speed",
         "index": 23,
         "converter": lambda x: math.trunc(float(x)),
-        "for_label": lambda x: f'{x} km/h',
+        "for_label": lambda x: f'{x}',
+        "unit": "km/h",
         "min": 0,
         "max": 200,
         "color": "blue",
@@ -126,11 +150,12 @@ class Signals(enum.Enum):
     LAMBDA_LOOP = {
         "name": "λ Loop",
         "index": 24,
-        "converter": lambda x: 'Closed' if x == 0 else 'Open',
-        "for_label": lambda x: f'{x}',
-        "min": None,
-        "max": None,
-        "color": "lime",
+        "converter": lambda x: int(x),
+        "for_label": lambda x: 'Closed' if x == 1 else 'Open',
+        "unit": "",
+        "min": 0,
+        "max": 2,
+        "color": "orange",
         "alarm": {
             "enabled": False,
             "min": None,
@@ -138,12 +163,12 @@ class Signals(enum.Enum):
         },
     }
 
-
     LAMBDA_TARGET = {
         "name": "λ Target",
         "index": 25,
         "converter": lambda x: round(float(x) / 1000, 2),
         "for_label": lambda x: f'{x:.2f} λ',
+        "unit": "λ",
         "min": 0.5,
         "max": 1.5,
         "color": "blue",
@@ -158,7 +183,8 @@ class Signals(enum.Enum):
         "name": "Fuel Trim",
         "index": 26,
         "converter": lambda x: round((1000 - float(x)) / 10, 2),
-        "for_label": lambda x: f'{x:.1f} %',
+        "for_label": lambda x: f'{x:.1f}',
+        "unit": "%",
         "min": -20,
         "max": 20,
         "color": "gray",
@@ -169,11 +195,28 @@ class Signals(enum.Enum):
         },
     }
 
+    PEDAL = {
+        "name": "Pedal",
+        "index": 29,
+        "converter": lambda x: round(min(100.00, (float(x) / 990.0) * 100.0), 2),
+        "for_label": lambda x: f'{x}',
+        "unit": "%",
+        "min": 0,
+        "max": 100,
+        "color": "MediumSeaGreen",
+        "alarm": {
+            "enabled": False,
+            "min": None,
+            "max": None,
+        },
+    }
+
     GEAR = {
         "name": "Gear",
         "index": 33,
         "converter": lambda x: math.trunc(float(x)),
         "for_label": lambda x: f'{x}',
+        "unit": "",
         "min": 0,
         "max": 6,
         "color": "lime",
@@ -184,3 +227,38 @@ class Signals(enum.Enum):
         },
     }
 
+    POWER = {
+        "name": "Power",
+        "calculated": True,
+        "value": lambda x: round(
+            (((x[Signals.MAP]['value'] * x[Signals.VEValue]['value'] * 10 * 0.001587 * x[Signals.RPM]['value'])
+              / (287 * (x[Signals.IAT]['value'] + 273) * 2 * 60)
+              / (9 * x[Signals.LAMBDA]['value'])) * 3600 * 2.20462) / 0.8,
+            2),
+        "for_label": lambda x: f'{x}',
+        "unit": "HP",
+        "min": 0,
+        "max": 270,
+        "color": "lime",
+        "alarm": {
+            "enabled": False,
+            "min": None,
+            "max": None,
+        },
+    }
+
+    TORQUE = {
+        "name": "Torque",
+        "calculated": True,
+        "value": lambda x: round((x[Signals.POWER]['value'] * 716.2) / x[Signals.RPM]['value'], 2),
+        "for_label": lambda x: f'{x}',
+        "unit": "Kgf.m",
+        "min": 0,
+        "max": 30,
+        "color": "blue",
+        "alarm": {
+            "enabled": False,
+            "min": None,
+            "max": None,
+        },
+    }
