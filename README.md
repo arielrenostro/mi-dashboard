@@ -6,6 +6,8 @@ Customized Monitoring Dashboard for Master Injection is a real-time serial telem
 
 ### Video
 
+[Example Video](assets/video.mp4)
+
 <video width="100%" controls>
   <source src="assets/video.mp4" type="video/mp4">
   Your browser does not support the video tag.
