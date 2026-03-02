@@ -7,6 +7,6 @@ GRAPH = [
 ]
 
 GRID = [
-    [Signals.RPM, Signals.VSS, Signals.MAP, Signals.CLT, Signals.IAT, Signals.POWER],
-    [Signals.LAMBDA, Signals.LAMBDA_TARGET, Signals.FUEL_TRIM, Signals.INJ_UTIL, Signals.IGN, Signals.TORQUE],
+    [Signals.RPM, Signals.VSS, Signals.MAP, Signals.CLT, Signals.IAT, Signals.GEAR, Signals.POWER],
+    [Signals.LAMBDA, Signals.LAMBDA_TARGET, Signals.FUEL_TRIM, Signals.INJ_UTIL, Signals.PEDAL, Signals.IGN, Signals.TORQUE],
 ]

@@ -6,7 +6,7 @@ class Signals(enum.Enum):
     RPM = {
         "name": "RPM",
         "index": 1,
-        "converter": lambda x: math.trunc(float(x)),
+        "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
         "unit": "RPM",
         "min": 0,
@@ -22,8 +22,8 @@ class Signals(enum.Enum):
     MAP = {
         "name": "MAP",
         "index": 2,
-        "converter": lambda x: float(x),
-        "for_label": lambda x: f'{math.trunc(x)}',
+        "converter": lambda x: int(x),
+        "for_label": lambda x: f'{x}',
         "unit": "kPa",
         "min": 20,
         "max": 200,
@@ -38,7 +38,7 @@ class Signals(enum.Enum):
     LAMBDA = {
         "name": "λ",
         "index": 6,
-        "converter": lambda x: round(float(x) / 1000, 2),
+        "converter": lambda x: float(x) / 1000,
         "for_label": lambda x: f'{x:.2f}',
         "unit": "λ",
         "min": 0.5,
@@ -54,7 +54,7 @@ class Signals(enum.Enum):
     INJ_UTIL = {
         "name": "Inj. Duty",
         "index": 8,
-        "converter": lambda x: math.trunc(float(x)),
+        "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
         "unit": "%",
         "min": 0,
@@ -67,11 +67,11 @@ class Signals(enum.Enum):
         },
     }
 
-    VEValue = {
-        "name": "VE Value",
+    VE = {
+        "name": "VE",
         "index": 9,
-        "converter": lambda x: round(float(x) / 10, 2),
-        "for_label": lambda x: f'{x}',
+        "converter": lambda x: float(x) / 10,
+        "for_label": lambda x: f'{x:.1f}',
         "unit": "%",
         "min": 0,
         "max": 1200,
@@ -86,7 +86,7 @@ class Signals(enum.Enum):
     IGN = {
         "name": "Ign",
         "index": 10,
-        "converter": lambda x: math.trunc(float(x)),
+        "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
         "unit": "º",
         "min": -45,
@@ -102,7 +102,7 @@ class Signals(enum.Enum):
     CLT = {
         "name": "CLT",
         "index": 19,
-        "converter": lambda x: math.trunc(float(x) - 273),
+        "converter": lambda x: int(x) - 273,
         "for_label": lambda x: f'{x}',
         "unit": "ºC",
         "min": -20,
@@ -118,7 +118,7 @@ class Signals(enum.Enum):
     IAT = {
         "name": "IAT",
         "index": 20,
-        "converter": lambda x: math.trunc(float(x) - 273),
+        "converter": lambda x: int(x) - 273,
         "for_label": lambda x: f'{x}',
         "unit": "ºC",
         "min": -20,
@@ -134,7 +134,7 @@ class Signals(enum.Enum):
     VSS = {
         "name": "Speed",
         "index": 23,
-        "converter": lambda x: math.trunc(float(x)),
+        "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
         "unit": "km/h",
         "min": 0,
@@ -166,8 +166,8 @@ class Signals(enum.Enum):
     LAMBDA_TARGET = {
         "name": "λ Target",
         "index": 25,
-        "converter": lambda x: round(float(x) / 1000, 2),
-        "for_label": lambda x: f'{x:.2f} λ',
+        "converter": lambda x: float(x) / 1000,
+        "for_label": lambda x: f'{x:.2f}',
         "unit": "λ",
         "min": 0.5,
         "max": 1.5,
@@ -182,7 +182,7 @@ class Signals(enum.Enum):
     FUEL_TRIM = {
         "name": "Fuel Trim",
         "index": 26,
-        "converter": lambda x: round((1000 - float(x)) / 10, 2),
+        "converter": lambda x: (1000 - float(x)) / 10,
         "for_label": lambda x: f'{x:.1f}',
         "unit": "%",
         "min": -20,
@@ -198,8 +198,8 @@ class Signals(enum.Enum):
     PEDAL = {
         "name": "Pedal",
         "index": 29,
-        "converter": lambda x: round(min(100.00, (float(x) / 990.0) * 100.0), 2),
-        "for_label": lambda x: f'{x}',
+        "converter": lambda x: min(100.00, (float(x) / 990.0) * 100.0),
+        "for_label": lambda x: f'{x:.1f}',
         "unit": "%",
         "min": 0,
         "max": 100,
@@ -214,7 +214,7 @@ class Signals(enum.Enum):
     GEAR = {
         "name": "Gear",
         "index": 33,
-        "converter": lambda x: math.trunc(float(x)),
+        "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
         "unit": "",
         "min": 0,
@@ -230,12 +230,11 @@ class Signals(enum.Enum):
     POWER = {
         "name": "Power",
         "calculated": True,
-        "value": lambda x: round(
-            (((x[Signals.MAP]['value'] * x[Signals.VEValue]['value'] * 10 * 0.001587 * x[Signals.RPM]['value'])
-              / (287 * (x[Signals.IAT]['value'] + 273) * 2 * 60)
-              / (9 * x[Signals.LAMBDA]['value'])) * 3600 * 2.20462) / 0.8,
-            2),
-        "for_label": lambda x: f'{x}',
+        "value": lambda x:
+        (((x[Signals.MAP]['value'] * x[Signals.VE]['value'] * 10 * 0.001587 * x[Signals.RPM]['value'])
+          / (287 * (x[Signals.IAT]['value'] + 273) * 2 * 60)
+          / (9 * x[Signals.LAMBDA]['value'])) * 3600 * 2.20462) / 0.8,
+        "for_label": lambda x: f'{x:.1f}',
         "unit": "HP",
         "min": 0,
         "max": 270,
@@ -250,8 +249,8 @@ class Signals(enum.Enum):
     TORQUE = {
         "name": "Torque",
         "calculated": True,
-        "value": lambda x: round((x[Signals.POWER]['value'] * 716.2) / x[Signals.RPM]['value'], 2),
-        "for_label": lambda x: f'{x}',
+        "value": lambda x: (x[Signals.POWER]['value'] * 716.2) / x[Signals.RPM]['value'],
+        "for_label": lambda x: f'{x:.1f}',
         "unit": "Kgf.m",
         "min": 0,
         "max": 30,
