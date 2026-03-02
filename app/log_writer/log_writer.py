@@ -41,7 +41,6 @@ class LogWriter(QWidget):
         self.worker.moveToThread(self.thread)
 
         self.task.connect(self.worker.process_task)
-        self.thread.started.connect(lambda: print("Thread started, now idle."))
         self.thread.start()
 
     def write(self, line):

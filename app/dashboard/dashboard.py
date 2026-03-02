@@ -7,14 +7,13 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QGridLayout
 )
 
-from app.dashboard.grid import GRID, GRAPH, SIGNALS_VIEW
 from app.master.log import LOG_PREFIX
-from app.master.signals import SIGNALS
+from app.master.signals import Signals
 
 
 class Dashboard(QWidget):
 
-    def __init__(self, alarm_worker):
+    def __init__(self, alarm_worker, grid, graphs, graph_x_size):
         super().__init__()
 
         self.setWindowTitle("Master Injection Dashboard")
@@ -27,82 +26,148 @@ class Dashboard(QWidget):
         self.layout.addLayout(self.grid)
 
         self.labels = {}
-        self.create_grid()
+        self.create_grid(grid)
 
         self.curves = {}
         self.buffers = {}
-
-        for row in GRAPH:
-            graph = pg.PlotWidget()
-            self.layout.addWidget(graph)
-
-            plot_item = graph.getPlotItem()
-            base_view = plot_item.getViewBox()
-            base_view.setBackgroundColor(None)
-            base_view.setMouseEnabled(y=False)
-            base_view.setZValue(-100)
-
-            for signal_id in row:
-                view_cfg = SIGNALS_VIEW[signal_id]
-
-                axis = pg.AxisItem("left")
-                plot_item.layout.addItem(
-                    axis,
-                    2,
-                    plot_item.layout.columnCount()
-                )
-
-                view_box = pg.ViewBox(enableMenu=False)
-                view_box.setBackgroundColor(None)
-                view_box.setMouseEnabled(y=False)
-                view_box.setZValue(-100)
-                graph.scene().addItem(view_box)
-
-                axis.linkToView(view_box)
-                # view_box.setXLink(base_view)
-
-                view_box.setYRange(view_cfg["min"], view_cfg["max"])
-
-                curve = pg.PlotCurveItem(pen=view_cfg["color"])
-                view_box.addItem(curve)
-
-                self.curves[signal_id] = curve
-                self.buffers[signal_id] = deque(maxlen=300)
-
-        # for row in GRAPH:
-        #     graph = pg.PlotWidget()
-        #     self.layout.addWidget(graph)
-        #
-        #     for signal_id in row:
-        #         view = SIGNALS_VIEW[signal_id]
-        #         plot = graph.plot()
-        #         self.curves[signal_id] = plot
-        #         self.buffers[signal_id] = deque(maxlen=300)
+        self.peak_markers = {}
+        self.peak_labels = {}
+        self.min_markers = {}
+        self.min_labels = {}
+        self.create_graphs(graphs, graph_x_size)
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_graph)
         self.timer.start(100)
 
+        self.threads = []
+
         self.alarm_worker = alarm_worker
 
-    def create_grid(self):
-        for row_idx in range(len(GRID)):
-            for col_idx in range(len(GRID[row_idx])):
-                signal_id = GRID[row_idx][col_idx]
-                signal = SIGNALS[signal_id]
-                name = signal['name']
+    def create_grid(self, grid):
+        for row_idx in range(len(grid)):
+            for col_idx in range(len(grid[row_idx])):
+                signal = grid[row_idx][col_idx]
+                name = signal.value['name']
 
-                label = QLabel(f"{name} --")
-                label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                cell_widget = QWidget()
+                cell_widget.setStyleSheet("background-color:black;")
 
-                font = QFont("Arial", 56)
-                font.setBold(True)
-                label.setFont(font)
+                # layout interno
+                cell_layout = QVBoxLayout(cell_widget)
+                cell_layout.setContentsMargins(8, 4, 8, 4)
+                cell_layout.setSpacing(0)
 
-                label.setStyleSheet("background-color:black; color:white;")
+                small_label = QLabel(f"{name}")
+                small_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
-                self.grid.addWidget(label, row_idx, col_idx)
-                self.labels[signal_id] = label
+                small_font = QFont("Arial", 14)
+                small_font.setBold(True)
+                small_label.setFont(small_font)
+
+                small_label.setStyleSheet("color: gray;")
+
+                big_label = QLabel("--")
+                big_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+
+                big_font = QFont("Arial", 56)
+                big_font.setBold(True)
+                big_label.setFont(big_font)
+
+                big_label.setStyleSheet("color: white;")
+
+                cell_layout.addWidget(small_label)
+                cell_layout.addWidget(big_label)
+
+                self.grid.addWidget(cell_widget, row_idx, col_idx)
+                self.labels[signal] = (cell_widget, big_label)
+
+    def create_graphs(self, graphs, graph_x_size):
+        for row in graphs:
+            plot_widget = pg.PlotWidget()
+            self.layout.addWidget(plot_widget)
+
+            plot_item = plot_widget.getPlotItem()
+            base_view = plot_item.getViewBox()
+            base_view.setMouseEnabled(x=False, y=True)
+            plot_item.hideAxis("left")
+            plot_item.hideAxis("bottom")
+
+            for signal in row:
+                name = signal.value["name"]
+                color = signal.value["color"]
+                min_ = signal.value["min"]
+                max_ = signal.value["max"]
+
+                axis = pg.AxisItem("right")
+
+                font = QFont("Arial", 8)
+                axis.setStyle(tickFont=font)
+
+                axis.setTextPen(pg.mkPen(color))
+                axis.setLabel(name)
+
+                col = plot_item.layout.columnCount()
+                plot_item.layout.addItem(axis, 2, col)
+
+                view_box = pg.ViewBox(enableMenu=False)
+                view_box.setMouseEnabled(y=False)
+                view_box.setBackgroundColor(None)
+
+                plot_widget.scene().addItem(view_box)
+
+                axis.linkToView(view_box)
+                view_box.setXLink(base_view)
+                view_box.setYRange(min_, max_)
+
+                def make_update(vb):
+                    def update():
+                        vb.setGeometry(base_view.sceneBoundingRect())
+
+                    return update
+
+                update_fn = make_update(view_box)
+                base_view.sigResized.connect(update_fn)
+                update_fn()
+
+                curve = pg.PlotCurveItem(
+                    pen=pg.mkPen(color, width=2)
+                )
+
+                view_box.addItem(curve)
+
+                curve.getViewBox().setXRange(
+                    0,
+                    graph_x_size + 1,
+                    padding=0
+                )
+
+                for markers, labels in [
+                    (self.peak_markers, self.peak_labels),
+                    (self.min_markers, self.min_labels),
+                ]:
+                    peak_marker = pg.ScatterPlotItem(
+                        size=10,
+                        brush=pg.mkBrush(color),
+                        pen=pg.mkPen("white", width=2)
+                    )
+                    peak_label = pg.TextItem(
+                        "",
+                        color=color,
+                        anchor=(0.5, 1.5)
+                    )
+                    q_font = QFont("Arial", 14)
+                    q_font.setBold(True)
+                    peak_label.setFont(q_font)
+
+                    view_box.addItem(peak_marker)
+                    view_box.addItem(peak_label)
+
+                    markers[signal] = peak_marker
+                    labels[signal] = peak_label
+
+                self.curves[signal] = curve
+                self.buffers[signal] = deque(maxlen=graph_x_size)
 
     def process_line(self, line):
         if not line.startswith(LOG_PREFIX):
@@ -113,62 +178,106 @@ class Dashboard(QWidget):
             return
 
         parsed_data = {}
-        for signal_id, signal in SIGNALS.items():
-            idx = signal["index"]
+        for signal in Signals:
+            idx = signal.value["index"]
             if idx >= len(parts):
                 continue
 
-            raw = parts[idx]
-            value = signal["converter"](raw)
-            value_str = signal["label_value"](value)
+            try:
+                raw = parts[idx]
+                value = signal.value["converter"](raw)
+                value_str = signal.value["for_label"](value)
 
-            parsed_data[signal_id] = {
-                "signal": signal,
-                "view": SIGNALS_VIEW.get(signal_id),
-                "raw": raw,
-                "value": value,
-                "value_str": value_str,
-            }
+                parsed_data[signal] = {
+                    "signal": signal,
+                    "raw": raw,
+                    "value": value,
+                    "value_str": value_str,
+                }
+            except:
+                pass
 
-        self.alarm_worker.notify_data_received()
+        for signal in self.labels.keys():
+            try:
+                data = parsed_data[signal]
+                self.update_display(signal, data)
+            except Exception as e:
+                print(e)
+                pass
 
-        for row in GRID:
-            for signal_id in row:
-                data = parsed_data[signal_id]
-                try:
-                    self.update_display(signal_id, data)
-                except:
-                    pass
+        for signal, buff in self.buffers.items():
+            data = parsed_data[signal]
+            buff.append(data["value"])
 
-        for row in GRAPH:
-            for signal_id in row:
-                data = parsed_data[signal_id]
-                self.buffers[signal_id].append(data["value"])
-
-    def update_display(self, signal_id, data):
+    def update_display(self, signal, data):
         value = data["value"]
-        view = data["view"]
+        alarm = signal.value["alarm"]
+        color = signal.value["color"]
 
         in_alarm = False
-        color = view["color"]
-        min_ = view["min"] if isinstance(view["min"], (int, float)) else view["min"](value)
-        max_ = view["max"] if isinstance(view["max"], (int, float)) else view["max"](value)
+        min_ = alarm["min"] if isinstance(alarm["min"], (int, float, None)) else alarm["min"](value)
+        max_ = alarm["max"] if isinstance(alarm["max"], (int, float, None)) else alarm["max"](value)
 
         if value < min_:
             color = "red"
-            in_alarm = view["alarm"]
+            in_alarm = alarm["enabled"]
+
         elif value > max_:
             color = "red"
-            in_alarm = view["alarm"]
+            in_alarm = alarm["enabled"]
 
-        label = self.labels[signal_id]
-        label.setText(f"{data["signal"]["name"]} {data["value_str"]}")
-        label.setStyleSheet(
-            f"background-color:black; color:{color};"
-        )
+        container, label = self.labels[signal]
+        label.setText(data["value_str"])
 
-        self.alarm_worker.set_alarm_state(in_alarm)
+        firing = self.alarm_worker.is_alarm_firing(signal)
+
+        if not in_alarm and not firing:
+            label.setStyleSheet(f"color:{color};")
+
+        if in_alarm and not firing:
+            self._fire_field_alarm(signal, container, label)
+
+        self.alarm_worker.set_alarm_state(signal, in_alarm)
 
     def update_graph(self):
-        for signal_id, curve in self.curves.items():
-            curve.setData(list(self.buffers[signal_id]))
+        for signal, curve in self.curves.items():
+            data = list(self.buffers[signal])
+            curve.setData(data)
+
+            for markers, labels, fn_value in [
+                (self.peak_markers, self.peak_labels, max),
+                (self.min_markers, self.min_labels, min),
+            ]:
+                value = fn_value(data)
+                value_index = data.index(value)
+
+                markers[signal].setData(
+                    [value_index],
+                    [value],
+                )
+
+                labels[signal].setText(
+                    signal.value["for_label"](value)
+                )
+
+                labels[signal].setPos(
+                    value_index,
+                    value,
+                )
+
+    def _fire_field_alarm(self, signal, container, label):
+        def _fn(i):
+            def __fn():
+                if not self.alarm_worker.is_alarm_firing(signal):
+                    container.setStyleSheet("background-color:black;")
+                    return
+                QTimer.singleShot(200, _fn(i + 1))
+                label.setStyleSheet("color:red;")
+                if i % 2 == 0:
+                    container.setStyleSheet("background-color:black;")
+                else:
+                    container.setStyleSheet("background-color:yellow;")
+
+            return __fn
+
+        QTimer.singleShot(0, _fn(0))

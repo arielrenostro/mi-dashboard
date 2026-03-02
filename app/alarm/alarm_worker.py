@@ -1,11 +1,13 @@
 import time
 
-from PyQt6.QtCore import QThread
+from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtCore import QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
+ALARM_DURATION = 2
 
 class AlarmWorker(QThread):
+    emitter = pyqtSignal(bool)
 
     def __init__(self, sound):
         super().__init__()
@@ -18,8 +20,7 @@ class AlarmWorker(QThread):
         self.player.setSource(QUrl.fromLocalFile(sound))
 
         self.running = True
-        self.alarm_play_until = time.time()
-        self.last_data_time = time.time()
+        self.alarms = {}
 
         self.player.mediaStatusChanged.connect(self.handle_status)
 
@@ -29,12 +30,14 @@ class AlarmWorker(QThread):
                 if self.should_play():
                     if self.player.playbackState() != QMediaPlayer.PlaybackState.PlayingState:
                         self.player.play()
+                        self.emitter.emit(True)
                 else:
                     if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
                         self.player.stop()
+                        self.emitter.emit(False)
             except:
                 pass
-            time.sleep(0.01)
+            self.msleep(100)
 
     def stop(self):
         self.player.stop()
@@ -46,12 +49,17 @@ class AlarmWorker(QThread):
                 self.player.play()
 
     def should_play(self):
-        play_until_active = time.time() < self.alarm_play_until
-        return play_until_active
+        if len(self.alarms) == 0:
+            return False
+        max_ = max(self.alarms.values())
+        return time.time() - max_ < ALARM_DURATION
 
-    def set_alarm_state(self, active: bool):
-        if not self.should_play() and active:
-            self.alarm_play_until = time.time() + 1.0
+    def set_alarm_state(self, signal, active):
+        if active:
+            self.alarms[signal] = time.time()
 
-    def notify_data_received(self):
-        self.last_data_time = time.time()
+    def is_alarm_firing(self, signal):
+        last_triggered = self.alarms.get(signal)
+        if last_triggered:
+            return time.time() - last_triggered < ALARM_DURATION
+        return False

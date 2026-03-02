@@ -21,16 +21,18 @@ class SerialReader(QThread):
             try:
                 print("Tentando conectar...")
                 self.serial = serial.Serial(self.port, self.baudrate, timeout=1)
-                self.serial.write(b"#D50\n")
-                print(f'Recebido: {self.serial.readline()}')
-                print(f'Recebido: {self.serial.readline()}')
-                self.serial.write(b"\n")
-                time.sleep(0.5)
-                self.serial.write(b"\n")
-                time.sleep(0.5)
-                self.serial.write(b"#D01\n")
                 print("Conectado.")
-                return
+
+                self.serial.write(b"#D50\n")
+                print(f'Informações da ECU: {self.serial.readline()}')
+
+                while '#D01' not in self.serial.readline():
+                    print("Tentando iniciar streaming...")
+                    self.serial.write(b"\n")
+                    time.sleep(0.5)
+                    self.serial.write(b"#D01\n")
+
+                print("Streaming iniciado.")
             except:
                 print("Falha. Tentando novamente...")
                 time.sleep(3)

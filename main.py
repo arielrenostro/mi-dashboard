@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
 
 from app.alarm.alarm_worker import AlarmWorker
 from app.dashboard.dashboard import Dashboard
+from app.dashboard.grid import GRID, GRAPH
 from app.log_writer.log_writer import LogWriter
 from app.reader.serial_reader_mock import SerialReaderMock
 
@@ -27,6 +28,9 @@ def main():
 
     dashboard = Dashboard(
         alarm_worker=alarm_worker,
+        grid=GRID,
+        graphs=GRAPH,
+        graph_x_size=150,
     )
     log_writer = LogWriter(
         log_file=LOG_FILE,
