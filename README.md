@@ -2,6 +2,8 @@
 
 Customized Monitoring Dashboard for Master Injection is a real-time serial telemetry dashboard designed for high-frequency automotive data streaming over Bluetooth (Windows COM port).
 
+![Example Image](assets/img.png)
+
 It provides:
 
 * Live full-screen dashboard display
