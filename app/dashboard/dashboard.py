@@ -40,8 +40,6 @@ class Dashboard(QWidget):
         self.timer.timeout.connect(self.update_graph)
         self.timer.start(100)
 
-        self.threads = []
-
         self.alarm_worker = alarm_worker
 
     def create_grid(self, grid):
