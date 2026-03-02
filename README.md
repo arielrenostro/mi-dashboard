@@ -2,40 +2,11 @@
 
 Customized Monitoring Dashboard for Master Injection is a real-time serial telemetry dashboard designed for high-frequency automotive data streaming over Bluetooth (Windows COM port).
 
-![Example Image](assets/img.png)
+## 🎬 Demo
 
-### Video
+[![Assista ao vídeo](assets/demo.png)](assets/demo.mp4)
 
-[Example Video](assets/video.mp4)
-
-assets/video.mp4
-
-<video width="100%" controls>
-  <source src="assets/video.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
-
-raw
-
-<video width="100%" controls>
-  <source src="https://raw.githubusercontent.com////assets/video.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
-
-
-raw 2
-
-<video width="100%" controls>
-  <source src="https://raw.githubusercontent.com///assets/video.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
-
-raw 3
-
-<video width="100%" controls>
-  <source src="https://github.com/arielrenostro/mi-dashboard/raw/refs/heads/main/assets/video.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
+_Click on image to open video._
 
 It provides:
 
