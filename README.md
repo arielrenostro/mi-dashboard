@@ -4,6 +4,10 @@ Customized Monitoring Dashboard for Master Injection is a real-time serial telem
 
 ![Example Image](assets/img.png)
 
+### Video
+
+[Example Video](assets/video.webm)
+
 It provides:
 
 * Live full-screen dashboard display
