@@ -6,8 +6,9 @@ Customized Monitoring Dashboard for Master Injection is a real-time serial telem
 
 ### Video
 
-<video width="1280" height="720" controls>
-  <source src="assets/video.webm" type="video/webm">
+<!-- https://github.com/arielrenostro/mi-dashboard/raw/refs/heads/main/assets/video.webm -->
+<video width="100%" controls>
+  <source src="https://raw.githubusercontent.com////assets/video.mp4" type="video/mp4">
   Your browser does not support the video tag.
 </video>
 
