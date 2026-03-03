@@ -1,8 +1,7 @@
 import enum
-import math
 
 
-class Signals(enum.Enum):
+class Signal(enum.Enum):
     RPM = {
         "name": "RPM",
         "index": 1,
@@ -231,9 +230,9 @@ class Signals(enum.Enum):
         "name": "Power",
         "calculated": True,
         "value": lambda x:
-        (((x[Signals.MAP]['value'] * x[Signals.VE]['value'] * 10 * 0.001587 * x[Signals.RPM]['value'])
-          / (287 * (x[Signals.IAT]['value'] + 273) * 2 * 60)
-          / (9 * x[Signals.LAMBDA]['value'])) * 3600 * 2.20462) / 0.8,
+        (((x[Signal.MAP]['value'] * x[Signal.VE]['value'] * 10 * 0.001587 * x[Signal.RPM]['value'])
+          / (287 * (x[Signal.IAT]['value'] + 273) * 2 * 60)
+          / (9 * x[Signal.LAMBDA]['value'])) * 3600 * 2.20462) / 0.8,
         "for_label": lambda x: f'{x:.1f}',
         "unit": "HP",
         "min": 0,
@@ -249,7 +248,7 @@ class Signals(enum.Enum):
     TORQUE = {
         "name": "Torque",
         "calculated": True,
-        "value": lambda x: (x[Signals.POWER]['value'] * 716.2) / x[Signals.RPM]['value'],
+        "value": lambda x: (x[Signal.POWER]['value'] * 716.2) / max(x[Signal.RPM]['value'], 1),
         "for_label": lambda x: f'{x:.1f}',
         "unit": "Kgf.m",
         "min": 0,

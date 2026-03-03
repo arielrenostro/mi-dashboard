@@ -35,7 +35,7 @@ class SerialReaderMock(QThread):
 
                 for line in f:
                     self.line += 1
-                    if self.line < 12100:
+                    if self.line < 12250:
                         continue
                     if not self.running:
                         break

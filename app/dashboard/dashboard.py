@@ -6,14 +6,15 @@ from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QGridLayout
 )
+from pyqtgraph.Qt.QtCore import Slot
 
-from app.master.log import LOG_PREFIX
-from app.master.signals import Signals
+from app.alarm.state import is_alarm_firing
+from app.master.signal import Signal
 
 
 class Dashboard(QWidget):
 
-    def __init__(self, alarm_worker, grid, graphs, graph_x_size):
+    def __init__(self, grid, graphs, graph_x_size):
         super().__init__()
 
         self.setWindowTitle("Master Injection Dashboard")
@@ -40,7 +41,9 @@ class Dashboard(QWidget):
         self.timer.timeout.connect(self.update_graph)
         self.timer.start(100)
 
-        self.alarm_worker = alarm_worker
+    def close(self):
+        super().close()
+        self.timer.stop()
 
     def create_grid(self, grid):
         for row_idx in range(len(grid)):
@@ -171,46 +174,20 @@ class Dashboard(QWidget):
                 self.curves[signal] = curve
                 self.buffers[signal] = deque(maxlen=graph_x_size)
 
-    def process_line(self, line):
-        if not line.startswith(LOG_PREFIX):
-            return
-
-        parts = line.split(";")
-        if len(parts) < 2:
-            return
-
-        parsed_data = {}
-        for signal in Signals:
-            try:
-                if signal.value.get("calculated", False):
-                    raw = signal.value["value"](parsed_data)
-                    value = raw
-                else:
-                    idx = signal.value["index"]
-                    if idx >= len(parts):
-                        continue
-                    raw = parts[idx]
-                    value = signal.value["converter"](raw)
-
-                parsed_data[signal] = {
-                    "signal": signal,
-                    "raw": raw,
-                    "value": value,
-                    "value_str": signal.value["for_label"](value),
-                }
-            except Exception as e:
-                print(e)
-
+    @Slot(dict)
+    def process_signals(self, parsed_data):
         for signal in self.labels.keys():
             try:
-                data = parsed_data[signal]
-                self.update_display(signal, data)
+                data = parsed_data.get(signal)
+                if data:
+                    self.update_display(signal, data)
             except Exception as e:
                 print(e)
 
         for signal, buff in self.buffers.items():
-            data = parsed_data[signal]
-            buff.append(data["value"])
+            data = parsed_data.get(signal)
+            if data:
+                buff.append(data["value"])
 
     def update_display(self, signal, data):
         value = data["value"]
@@ -232,15 +209,10 @@ class Dashboard(QWidget):
         container, label = self.labels[signal]
         label.setText(data["value_str"])
 
-        firing = self.alarm_worker.is_alarm_firing(signal)
+        firing = is_alarm_firing(signal)
 
         if not in_alarm and not firing:
             label.setStyleSheet(f"color:{color};")
-
-        if in_alarm and not firing:
-            self._fire_field_alarm(signal, container, label)
-
-        self.alarm_worker.set_alarm_state(signal, in_alarm)
 
     def update_graph(self):
         for signal, curve in self.curves.items():
@@ -251,26 +223,37 @@ class Dashboard(QWidget):
                 (self.peak_markers, self.peak_labels, max),
                 (self.min_markers, self.min_labels, min),
             ]:
-                value = fn_value(data)
-                value_index = data.index(value)
+                if len(data) > 0:
+                    value = fn_value(data)
+                    value_index = data.index(value)
 
-                markers[signal].setData(
-                    [value_index],
-                    [value],
-                )
+                    markers[signal].setData(
+                        [value_index],
+                        [value],
+                    )
 
-                unit = signal.value['unit']
-                label_text = signal.value["for_label"](value)
-                if unit != "":
-                    label_text = f"{label_text} {unit}"
+                    unit = signal.value['unit']
+                    label_text = signal.value["for_label"](value)
+                    if unit != "":
+                        label_text = f"{label_text} {unit}"
 
-                labels[signal].setText(label_text)
-                labels[signal].setPos(value_index, value)
+                    labels[signal].setText(label_text)
+                    labels[signal].setPos(value_index, value)
 
-    def _fire_field_alarm(self, signal, container, label):
+                else:
+                    markers[signal].hide()
+                    labels[signal].hide()
+
+    @Slot(Signal)
+    def fire_field_alarm(self, signal):
+        if signal not in self.labels:
+            return
+
+        container, label = self.labels[signal]
+
         def _fn(i):
             def __fn():
-                if not self.alarm_worker.is_alarm_firing(signal):
+                if not is_alarm_firing(signal):
                     container.setStyleSheet("background-color:black;")
                     return
                 QTimer.singleShot(200, _fn(i + 1))

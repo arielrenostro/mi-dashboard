@@ -1,7 +1,9 @@
-import time
+from typing import List, Optional
 
 import serial
 from PyQt6.QtCore import pyqtSignal, QThread
+
+from app.master.ecu import EcuCommand, EcuResponse
 
 
 class SerialReader(QThread):
@@ -9,40 +11,32 @@ class SerialReader(QThread):
 
     def __init__(self, port, baudrate):
         super().__init__()
-        self.port = port
-        self.baudrate = baudrate
+        self.serial = serial.Serial(port, baudrate, timeout=1, write_timeout=1)
         self.running = True
-        self.serial = None
         self.d01 = None
         self.d02 = None
 
     def connect(self):
         while self.running:
             try:
-                print("Tentando conectar...")
-                self.serial = serial.Serial(self.port, self.baudrate, timeout=1)
-                print("Conectado.")
+                if not self.serial.is_open:
+                    print("Tentando conectar...")
+                    self.serial.open()
+                    print("Conectado.")
 
-                self.serial.write(b"#D50\n")
-                print(f'Informações da ECU: {self.serial.readline()}')
-
-                while '#D01' not in self.serial.readline():
-                    print("Tentando iniciar streaming...")
-                    self.serial.write(b"\n")
-                    time.sleep(0.5)
-                    self.serial.write(b"#D01\n")
-
-                print("Streaming iniciado.")
-            except:
-                print("Falha. Tentando novamente...")
-                time.sleep(3)
+                self._start_communication()
+                self._start_streaming()
+                return
+            except Exception as e:
+                print(f'Falha ao tentar conectar. Erro: {e}')
+                self._close()
 
     def run(self):
         self.connect()
 
-        while self.running:
+        while self.running and self.serial.is_open:
             try:
-                line = self.serial.readline().decode("utf-8").strip()
+                line = self._readline()
                 if line.startswith("#D01"):
                     self.d01 = line
                 elif line.startswith("#D02"):
@@ -52,10 +46,10 @@ class SerialReader(QThread):
                     self.emitter.emit(f'{self.d01};{self.d02}')
                     self.d01 = None
                     self.d02 = None
-            except:
-                print("Conexão perdida. Reconectando...")
+            except Exception as e:
+                print(f"Conexão perdida. Reconectando... {e}")
                 try:
-                    self.serial.close()
+                    self._close()
                 except:
                     pass
                 self.connect()
@@ -63,6 +57,62 @@ class SerialReader(QThread):
     def stop(self):
         self.running = False
         try:
+            self._close()
+        except:
+            pass
+
+    def _start_streaming(self):
+        print('Iniciando streaming...')
+        line = self._send_and_retry(
+            EcuCommand.STREAMING,
+            [
+                EcuResponse.MESS_DATA_1,
+                EcuResponse.MESS_DATA_2,
+                EcuResponse.MESS_DATA_3,
+            ]
+        )
+        if len(line) > 0:
+            print('Streaming iniciado.')
+        else:
+            print('Streaming não iniciado.')
+
+    def _start_communication(self):
+        print('Iniciando comunicação...')
+        line = self._send_and_retry(EcuCommand.ECU_INFO, [EcuResponse.ECU_INFO])
+        if len(line) > 0:
+            print('Comunicação iniciada.')
+        else:
+            print('Comunicação não iniciada.')
+
+    def _send_and_retry(self, cmd: EcuCommand, expected: List[EcuResponse]) -> Optional[str]:
+        count = 0
+        while self.running and self.serial.is_open:
+            if count % 3 == 0:
+                print(f'Enviando para ECU "{cmd.description}"')
+                self._send_command(cmd)
+            count += 1
+            line = self._readline()
+
+            for exp in expected:
+                if exp.value in line:
+                    print(f'Dado encontrado: {line}')
+                    return line
+            if len(line) > 0:
+                print(f'Dado não esperado recebido: {line}')
+            else:
+                print('Nenhum dado recebido')
+        return None
+
+    def _readline(self) -> str:
+        return self.serial.readline().decode("utf-8").strip()
+
+    def _send_command(self, cmd: EcuCommand) -> None:
+        self.serial.write(f'{cmd.value}\n'.encode("utf-8"))
+
+    def _close(self):
+        try:
             self.serial.close()
         except:
             pass
+        self.d01 = None
+        self.d02 = None
