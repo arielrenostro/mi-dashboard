@@ -16,6 +16,7 @@ PORT = "COM1"
 BAUDRATE = 115200
 LOG_FILE = "log_stream.csv"
 ALARM_SOUND = "alarm.wav"
+MOCK_FILE = "C:\\Users\\ariel\\OneDrive\\Carros\\206\\Master Injection\\Datalogs\\4Bar - 9\\log_stream_fixed.csv"
 
 
 # ==========================================
@@ -42,8 +43,10 @@ def main():
     signal_processor.emitter.connect(dashboard.process_signals)
     signal_processor.emitter.connect(alarm_processor.process_signals)
 
-    # serial_thread = SerialReaderMock(PORT, BAUDRATE)
-    serial_thread = SerialReader(PORT, BAUDRATE)
+    if MOCK_FILE:
+        serial_thread = SerialReaderMock(MOCK_FILE)
+    else:
+        serial_thread = SerialReader(PORT, BAUDRATE)
     serial_thread.emitter.connect(signal_processor.process_line)
     serial_thread.emitter.connect(log_writer.write)
     serial_thread.start()
