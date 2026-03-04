@@ -11,7 +11,8 @@ class SerialReader(QThread):
 
     def __init__(self, port, baudrate):
         super().__init__()
-        self.serial = serial.Serial(port, baudrate, timeout=1, write_timeout=1)
+        self.serial = serial.Serial(baudrate=baudrate, timeout=1, write_timeout=1)
+        self.serial.port = port  # do it here to not open by constructor
         self.running = True
         self.d01 = None
         self.d02 = None
@@ -32,11 +33,26 @@ class SerialReader(QThread):
                 self._close()
 
     def run(self):
-        self.connect()
+        count_zero = 0
 
-        while self.running and self.serial.is_open:
+        while self.running:
+            if not self.serial.is_open:
+                self.connect()
+
+            if count_zero == 3:
+                print(f'Muitos retornos vazios... Reconectando...')
+                count_zero = 0
+                self._close()
+                continue
+
             try:
                 line = self._readline()
+                if len(line) == 0:
+                    count_zero += 1
+                    continue
+
+                count_zero = 0
+
                 if line.startswith("#D01"):
                     self.d01 = line
                 elif line.startswith("#D02"):
@@ -52,7 +68,6 @@ class SerialReader(QThread):
                     self._close()
                 except:
                     pass
-                self.connect()
 
     def stop(self):
         self.running = False
