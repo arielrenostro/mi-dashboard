@@ -59,7 +59,7 @@ class SerialReader(QThread):
                     self.d02 = line
 
                 if self.d01 and self.d02:
-                    self.emitter.emit(f'{self.d01};{self.d02}')
+                    self.emitter.emit(f'{self.d01};{self.d02}'.strip())
                     self.d01 = None
                     self.d02 = None
             except Exception as e:

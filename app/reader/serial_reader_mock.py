@@ -22,7 +22,7 @@ class SerialReaderMock(QThread):
 
             with open(self.mock_file, 'r') as f:
                 log_origin = "master"
-                line = f.readline()
+                line = f.readline().replace(',', ';').strip()
 
                 if line.count(';') == 33:
                     log_origin = "this"

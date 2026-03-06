@@ -16,7 +16,7 @@ class Worker(QObject):
         super().__init__()
         exists = os.path.exists(log_file)
         self.log_file = open(log_file, "a", newline='')
-        self.csv_writer = csv.writer(self.log_file)
+        self.csv_writer = csv.writer(self.log_file, delimiter=';', lineterminator='\n')
         if not exists:
             self.csv_writer.writerow(
                 ["Timestamp", "Mess 1", "RPM", "MAP", "Boost", "Load %", "Idle", "Lambda 1", "Inj. Pulse", "Inj. Utiliz.",
