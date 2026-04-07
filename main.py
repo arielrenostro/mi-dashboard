@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime
 
 from PyQt6.QtWidgets import (
     QApplication
@@ -14,10 +15,10 @@ from app.reader.serial_reader_mock import SerialReaderMock
 
 PORT = "COM1"
 BAUDRATE = 115200
-LOG_FILE = "log_stream.csv"
+LOG_FILE = f"C:\\Users\\ariel\\OneDrive\\Carros\\206\\Master Injection\\Datalogs\\dash\\log_stream_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
 ALARM_SOUND = "alarm.wav"
 MOCK_FILE = "C:\\Users\\ariel\\OneDrive\\Carros\\206\\Master Injection\\Datalogs\\4Bar - 9\\log_stream_fixed.csv"
-
+MOCK_FILE = False
 
 # ==========================================
 # MAIN

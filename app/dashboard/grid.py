@@ -2,7 +2,7 @@ from app.master.signal import Signal
 
 GRAPH = [
     [Signal.LAMBDA, Signal.LAMBDA_TARGET, Signal.FUEL_TRIM],
-    [Signal.RPM, Signal.VSS, Signal.MAP],
+    [Signal.BOOST, Signal.BOOST_TARGET, Signal.MAP],
     [Signal.POWER, Signal.TORQUE],
 ]
 

@@ -25,7 +25,7 @@ class Signal(enum.Enum):
         "for_label": lambda x: f'{x}',
         "unit": "kPa",
         "min": 20,
-        "max": 200,
+        "max": 250,
         "color": "fuchsia",
         "alarm": {
             "enabled": True,
@@ -41,8 +41,8 @@ class Signal(enum.Enum):
         "for_label": lambda x: f'{x}',
         "unit": "kPa",
         "min": 20,
-        "max": 300,
-        "color": "fuchsia",
+        "max": 250,
+        "color": "blue",
         "alarm": {
             "enabled": False,
             "min": 0,
@@ -216,8 +216,8 @@ class Signal(enum.Enum):
         "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
         "unit": "kPa",
-        "min": 0,
-        "max": 300,
+        "min": 20,
+        "max": 250,
         "color": "MediumSeaGreen",
         "alarm": {
             "enabled": False,
