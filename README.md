@@ -16,6 +16,7 @@ A real-time telemetry dashboard for the Master Injection ECU. Streams sensor dat
 - **Real-time graphs** — multi-axis buffered plots with peak/min markers, updated every 100 ms
 - **Audible alarms** — plays a `.wav` file while any signal stays outside its configured limits; 2-second cooldown prevents spam
 - **Manual event marking** — press **Enter** during a session to beep and stamp `MARK` on the next CSV row, useful for flagging moments of interest during a run
+- **Lambda loop toggle** — hold **Space** for 2 seconds to toggle between open and closed lambda loop; plays a sound and sends the ECU command immediately
 - **CSV logging** — appends every ECU frame with a millisecond Unix timestamp and an optional event label
 - **Automatic reconnection** — detects dropped Bluetooth connections and reconnects without restarting the app
 - **Mock mode** — replay a previously recorded CSV file instead of connecting to hardware
@@ -64,6 +65,16 @@ All settings are at the top of `main.py`:
 | `MOCK_FILE`    | Path to a recorded CSV for playback without hardware; set to `""` to use real serial |
 
 Signal definitions (name, ECU index, unit, limits, graph color, alarm thresholds) are hardcoded in `app/master/signal.py`. Dashboard layout is in `app/dashboard/grid.py`.
+
+---
+
+## Keyboard shortcuts
+
+| Key | Action |
+|-----|--------|
+| **Enter** | Beep + stamp `MARK` on the next CSV row |
+| **Space** (hold 2 s) | Toggle lambda loop open ↔ closed |
+| **Esc** | Exit the application |
 
 ---
 
