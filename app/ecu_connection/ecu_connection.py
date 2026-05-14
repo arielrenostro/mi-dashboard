@@ -1,4 +1,5 @@
 import logging
+import queue
 from typing import List, Optional
 
 import serial
@@ -9,16 +10,20 @@ from app.master.ecu import EcuCommand, EcuResponse
 logger = logging.getLogger(__name__)
 
 
-class SerialReader(QThread):
+class EcuConnection(QThread):
     emitter = pyqtSignal(str)
 
     def __init__(self, port, baudrate):
         super().__init__()
         self.serial = serial.Serial(baudrate=baudrate, timeout=1, write_timeout=1)
-        self.serial.port = port  # do it here to not open by constructor
+        self.serial.port = port
         self.running = True
         self.d01 = None
         self.d02 = None
+        self._command_queue: queue.Queue = queue.Queue()
+
+    def send_command(self, cmd: EcuCommand) -> None:
+        self._command_queue.put(cmd)
 
     def connect(self):
         while self.running:
@@ -65,6 +70,8 @@ class SerialReader(QThread):
                     self.emitter.emit(f'{self.d01};{self.d02}'.strip())
                     self.d01 = None
                     self.d02 = None
+                    self._drain_command_queue()
+
             except Exception as e:
                 logger.warning("Conexão perdida. Reconectando... %s", e)
                 try:
@@ -79,10 +86,19 @@ class SerialReader(QThread):
         except:
             pass
 
+    def _drain_command_queue(self):
+        while not self._command_queue.empty():
+            try:
+                cmd = self._command_queue.get_nowait()
+                logger.info("Enviando comando: %s", cmd.description)
+                self._send_command(cmd)
+            except queue.Empty:
+                break
+
     def _start_streaming(self):
         logger.debug("Iniciando streaming...")
         line = self._send_and_retry(
-            EcuCommand.STREAMING,
+            EcuCommand.STREAMING_START,
             [
                 EcuResponse.MESS_DATA_1,
                 EcuResponse.MESS_DATA_2,
@@ -124,8 +140,8 @@ class SerialReader(QThread):
     def _readline(self) -> str:
         return self.serial.readline().decode("utf-8").strip()
 
-    def _send_command(self, cmd: EcuCommand) -> None:
-        self.serial.write(f'{cmd.value}\n'.encode("utf-8"))
+    def _send_command(self, command: EcuCommand) -> None:
+        self.serial.write(f'{command.cmd}\n'.encode("utf-8"))
 
     def _close(self):
         try:

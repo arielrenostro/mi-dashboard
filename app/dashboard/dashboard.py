@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 class Dashboard(QWidget):
     key_event = pyqtSignal(int)
+    key_released = pyqtSignal(int)
 
     def __init__(self, grid, graphs, graph_x_size):
         super().__init__()
@@ -48,6 +49,10 @@ class Dashboard(QWidget):
     def keyPressEvent(self, event):
         self.key_event.emit(event.key())
         super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event):
+        self.key_released.emit(event.key())
+        super().keyReleaseEvent(event)
 
     def close(self):
         super().close()

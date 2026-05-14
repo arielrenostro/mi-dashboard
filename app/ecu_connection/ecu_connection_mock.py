@@ -2,8 +2,10 @@ import time
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from app.master.ecu import EcuCommand
 
-class SerialReaderMock(QThread):
+
+class EcuConnectionMock(QThread):
     emitter = pyqtSignal(str)
 
     def __init__(self, mock_file):
@@ -13,6 +15,9 @@ class SerialReaderMock(QThread):
         self.running = True
 
     def connect(self):
+        pass
+
+    def send_command(self, cmd: EcuCommand) -> None:
         pass
 
     def run(self):
@@ -34,9 +39,6 @@ class SerialReaderMock(QThread):
                     if self.line < 12250:
                         continue
                     parts = line.split(';')
-                    # map_ = int(parts[2])
-                    # if map_ <= 100:
-                    #     continue
 
                     self.emitter.emit(line.strip())
 

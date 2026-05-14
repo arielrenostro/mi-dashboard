@@ -1,6 +1,7 @@
 import sys
 from datetime import datetime
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication
 )
@@ -8,12 +9,15 @@ from PyQt6.QtWidgets import (
 from app.alarm.processor import AlarmProcessor
 from app.dashboard.dashboard import Dashboard
 from app.dashboard.grid import GRID, GRAPH
+from app.event.key_hold_detector import KeyHoldDetector
+from app.event.lambda_toggle import LambdaToggle
 from app.event.marker import EventMarker
 from app.log_writer.log_writer import LogWriter
 from app.logger import setup_logging
 from app.master.signal_processor import SignalProcessor
-from app.reader.serial_reader import SerialReader
-from app.reader.serial_reader_mock import SerialReaderMock
+from app.ecu_connection.ecu_connection import EcuConnection
+from app.ecu_connection.ecu_connection_mock import EcuConnectionMock
+from app.vehicle.lambda_loop_state_processor import LambdaLoopStateProcessor
 from app.vehicle.state import vehicle_state
 
 PORT = "COM1"
@@ -45,28 +49,42 @@ def main():
     alarm_processor.emitter.connect(dashboard.fire_field_alarm)
     alarm_processor.start()
 
+    if MOCK_FILE:
+        ecu_connection = EcuConnectionMock(MOCK_FILE)
+    else:
+        ecu_connection = EcuConnection(PORT, BAUDRATE)
+
+    lambda_loop_processor = LambdaLoopStateProcessor()
+
+    lambda_toggle = LambdaToggle(EVENT_SOUND)
+    lambda_toggle.command_requested.connect(ecu_connection.send_command)
+    lambda_toggle.command_requested.connect(lambda_loop_processor.on_command_sent)
+
+    space_detector = KeyHoldDetector(Qt.Key.Key_Space, 2000)
+    space_detector.triggered.connect(lambda_toggle.handle_trigger)
+
     event_marker = EventMarker(EVENT_SOUND)
-    dashboard.key_event.connect(event_marker.handle_key)
     event_marker.event_triggered.connect(log_writer.set_event_pending)
+
+    dashboard.key_event.connect(event_marker.handle_key)
+    dashboard.key_event.connect(space_detector.on_key_pressed)
+    dashboard.key_released.connect(space_detector.on_key_released)
 
     signal_processor = SignalProcessor()
     signal_processor.emitter.connect(dashboard.process_signals)
     signal_processor.emitter.connect(alarm_processor.process_signals)
     signal_processor.emitter.connect(vehicle_state.update)
+    signal_processor.emitter.connect(lambda_loop_processor.process_signals)
 
-    if MOCK_FILE:
-        serial_thread = SerialReaderMock(MOCK_FILE)
-    else:
-        serial_thread = SerialReader(PORT, BAUDRATE)
-    serial_thread.emitter.connect(signal_processor.process_line)
-    serial_thread.emitter.connect(log_writer.write)
-    serial_thread.start()
+    ecu_connection.emitter.connect(signal_processor.process_line)
+    ecu_connection.emitter.connect(log_writer.write)
+    ecu_connection.start()
 
     app.exec()
 
     dashboard.close()
     alarm_processor.stop()
-    serial_thread.stop()
+    ecu_connection.stop()
 
 
 if __name__ == "__main__":

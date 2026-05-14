@@ -10,6 +10,7 @@ class VehicleState:
         self._lock = threading.RLock()
         self._signals: dict = {}
         self._alarm_timestamps: dict = {}
+        self._lambda_loop_closed: bool = False
 
     def update(self, parsed_data: dict) -> None:
         with self._lock:
@@ -37,6 +38,14 @@ class VehicleState:
         with self._lock:
             if active:
                 self._alarm_timestamps[signal] = time.time()
+
+    def set_lambda_loop_state(self, is_closed: bool) -> None:
+        with self._lock:
+            self._lambda_loop_closed = is_closed
+
+    def is_lambda_loop_closed(self) -> bool:
+        with self._lock:
+            return self._lambda_loop_closed
 
 
 vehicle_state = VehicleState()
