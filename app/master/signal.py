@@ -197,7 +197,7 @@ class Signal(enum.Enum):
     FUEL_TRIM = {
         "name": "Fuel Trim",
         "index": 26,
-        "converter": lambda x: (1000 - float(x)) / 10,
+        "converter": lambda x: (float(x)- 1000) / 10,
         "for_label": lambda x: f'{x:.1f}',
         "unit": "%",
         "min": -20,
