@@ -3,7 +3,6 @@ import os
 import time
 
 from PyQt6.QtCore import QThread, QObject
-from PyQt6.QtWidgets import QWidget
 from pyqtgraph.Qt.QtCore import Slot, Signal
 
 from app.master.log import LOG_PREFIX
@@ -31,7 +30,7 @@ class Worker(QObject):
         self.log_file.flush()
 
 
-class LogWriter(QWidget):
+class LogWriter(QObject):
     task = Signal(list)
 
     def __init__(self, log_file):

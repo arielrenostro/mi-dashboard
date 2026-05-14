@@ -1,9 +1,12 @@
+import logging
 from typing import List, Optional
 
 import serial
 from PyQt6.QtCore import pyqtSignal, QThread
 
 from app.master.ecu import EcuCommand, EcuResponse
+
+logger = logging.getLogger(__name__)
 
 
 class SerialReader(QThread):
@@ -21,15 +24,15 @@ class SerialReader(QThread):
         while self.running:
             try:
                 if not self.serial.is_open:
-                    print("Tentando conectar...")
+                    logger.info("Tentando conectar...")
                     self.serial.open()
-                    print("Conectado.")
+                    logger.info("Conectado.")
 
                 self._start_communication()
                 self._start_streaming()
                 return
             except Exception as e:
-                print(f'Falha ao tentar conectar. Erro: {e}')
+                logger.warning("Falha ao tentar conectar. Erro: %s", e)
                 self._close()
 
     def run(self):
@@ -40,7 +43,7 @@ class SerialReader(QThread):
                 self.connect()
 
             if count_zero == 3:
-                print(f'Muitos retornos vazios... Reconectando...')
+                logger.warning("Muitos retornos vazios... Reconectando...")
                 count_zero = 0
                 self._close()
                 continue
@@ -63,7 +66,7 @@ class SerialReader(QThread):
                     self.d01 = None
                     self.d02 = None
             except Exception as e:
-                print(f"Conexão perdida. Reconectando... {e}")
+                logger.warning("Conexão perdida. Reconectando... %s", e)
                 try:
                     self._close()
                 except:
@@ -77,7 +80,7 @@ class SerialReader(QThread):
             pass
 
     def _start_streaming(self):
-        print('Iniciando streaming...')
+        logger.debug("Iniciando streaming...")
         line = self._send_and_retry(
             EcuCommand.STREAMING,
             [
@@ -86,36 +89,36 @@ class SerialReader(QThread):
                 EcuResponse.MESS_DATA_3,
             ]
         )
-        if len(line) > 0:
-            print('Streaming iniciado.')
+        if line and len(line) > 0:
+            logger.info("Streaming iniciado.")
         else:
-            print('Streaming não iniciado.')
+            logger.warning("Streaming não iniciado.")
 
     def _start_communication(self):
-        print('Iniciando comunicação...')
+        logger.debug("Iniciando comunicação...")
         line = self._send_and_retry(EcuCommand.ECU_INFO, [EcuResponse.ECU_INFO])
-        if len(line) > 0:
-            print('Comunicação iniciada.')
+        if line and len(line) > 0:
+            logger.info("Comunicação iniciada.")
         else:
-            print('Comunicação não iniciada.')
+            logger.warning("Comunicação não iniciada.")
 
     def _send_and_retry(self, cmd: EcuCommand, expected: List[EcuResponse]) -> Optional[str]:
         count = 0
         while self.running and self.serial.is_open:
             if count % 3 == 0:
-                print(f'Enviando para ECU "{cmd.description}"')
+                logger.debug("Enviando para ECU \"%s\"", cmd.description)
                 self._send_command(cmd)
             count += 1
             line = self._readline()
 
             for exp in expected:
                 if exp.value in line:
-                    print(f'Dado encontrado: {line}')
+                    logger.debug("Dado encontrado: %s", line)
                     return line
             if len(line) > 0:
-                print(f'Dado não esperado recebido: {line}')
+                logger.debug("Dado não esperado recebido: %s", line)
             else:
-                print('Nenhum dado recebido')
+                logger.debug("Nenhum dado recebido")
         return None
 
     def _readline(self) -> str:

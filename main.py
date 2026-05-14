@@ -8,9 +8,11 @@ from app.alarm.processor import AlarmProcessor
 from app.dashboard.dashboard import Dashboard
 from app.dashboard.grid import GRID, GRAPH
 from app.log_writer.log_writer import LogWriter
+from app.logger import setup_logging
 from app.master.signal_processor import SignalProcessor
 from app.reader.serial_reader import SerialReader
 from app.reader.serial_reader_mock import SerialReaderMock
+from app.vehicle.state import vehicle_state
 
 PORT = "COM1"
 BAUDRATE = 115200
@@ -24,6 +26,8 @@ MOCK_FILE = "C:\\Users\\ariel\\OneDrive\\Carros\\206\\Master Injection\\Datalogs
 # ==========================================
 
 def main():
+    setup_logging()
+
     app = QApplication(sys.argv)
 
     dashboard = Dashboard(
@@ -42,6 +46,7 @@ def main():
     signal_processor = SignalProcessor()
     signal_processor.emitter.connect(dashboard.process_signals)
     signal_processor.emitter.connect(alarm_processor.process_signals)
+    signal_processor.emitter.connect(vehicle_state.update)
 
     if MOCK_FILE:
         serial_thread = SerialReaderMock(MOCK_FILE)

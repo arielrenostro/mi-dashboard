@@ -1,11 +1,12 @@
-from PyQt6.QtCore import QThread, pyqtSignal
-from PyQt6.QtCore import QUrl
+import logging
+
+from PyQt6.QtCore import QThread, pyqtSignal, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
-from app.alarm.state import is_any_alarm_firing, set_alarm_state, is_alarm_firing
 from app.master.signal import Signal
+from app.vehicle.state import vehicle_state
 
-ALARM_DURATION = 2
+logger = logging.getLogger(__name__)
 
 
 class AlarmProcessor(QThread):
@@ -33,8 +34,8 @@ class AlarmProcessor(QThread):
                 else:
                     if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
                         self.player.stop()
-            except Exception as e:
-                print(e)
+            except Exception:
+                logger.exception("Erro no loop do AlarmProcessor")
             self.msleep(100)
 
     def stop(self):
@@ -47,19 +48,17 @@ class AlarmProcessor(QThread):
             alarm = signal.value["alarm"]
 
             in_alarm = False
-            min_ = alarm["min"] if alarm["min"] is None or isinstance(alarm["min"], (int, float)) else alarm["min"](
-                value)
-            max_ = alarm["max"] if alarm["max"] is None or isinstance(alarm["max"], (int, float)) else alarm["max"](
-                value)
+            min_ = alarm["min"] if alarm["min"] is None or isinstance(alarm["min"], (int, float)) else alarm["min"](value)
+            max_ = alarm["max"] if alarm["max"] is None or isinstance(alarm["max"], (int, float)) else alarm["max"](value)
 
             if min_ is not None and value < min_:
                 in_alarm = alarm["enabled"]
             elif max_ is not None and value > max_:
                 in_alarm = alarm["enabled"]
 
-            if in_alarm and not is_alarm_firing(signal):
+            if in_alarm and not vehicle_state.is_alarm_firing(signal):
                 self.emitter.emit(signal)
-            set_alarm_state(signal, in_alarm)
+            vehicle_state.set_alarm(signal, in_alarm)
 
     def _handle_status(self, status):
         if status == QMediaPlayer.MediaStatus.EndOfMedia:
@@ -67,4 +66,4 @@ class AlarmProcessor(QThread):
                 self.player.play()
 
     def _should_play(self):
-        return is_any_alarm_firing()
+        return vehicle_state.is_any_alarm_firing()

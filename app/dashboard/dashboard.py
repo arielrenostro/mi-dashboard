@@ -1,3 +1,4 @@
+import logging
 from collections import deque
 
 import pyqtgraph as pg
@@ -8,8 +9,10 @@ from PyQt6.QtWidgets import (
 )
 from pyqtgraph.Qt.QtCore import Slot
 
-from app.alarm.state import is_alarm_firing
 from app.master.signal import Signal
+from app.vehicle.state import vehicle_state
+
+logger = logging.getLogger(__name__)
 
 
 class Dashboard(QWidget):
@@ -55,7 +58,6 @@ class Dashboard(QWidget):
                 cell_widget = QWidget()
                 cell_widget.setStyleSheet("background-color:black;")
 
-                # layout interno
                 cell_layout = QVBoxLayout(cell_widget)
                 cell_layout.setContentsMargins(8, 4, 8, 4)
                 cell_layout.setSpacing(0)
@@ -181,8 +183,8 @@ class Dashboard(QWidget):
                 data = parsed_data.get(signal)
                 if data:
                     self.update_display(signal, data)
-            except Exception as e:
-                print(e)
+            except Exception:
+                logger.exception("Erro ao processar sinal %s no dashboard", signal)
 
         for signal, buff in self.buffers.items():
             data = parsed_data.get(signal)
@@ -209,7 +211,7 @@ class Dashboard(QWidget):
         container, label = self.labels[signal]
         label.setText(data["value_str"])
 
-        firing = is_alarm_firing(signal)
+        firing = vehicle_state.is_alarm_firing(signal)
 
         if not in_alarm and not firing:
             label.setStyleSheet(f"color:{color};")
@@ -253,7 +255,7 @@ class Dashboard(QWidget):
 
         def _fn(i):
             def __fn():
-                if not is_alarm_firing(signal):
+                if not vehicle_state.is_alarm_firing(signal):
                     container.setStyleSheet("background-color:black;")
                     return
                 QTimer.singleShot(200, _fn(i + 1))

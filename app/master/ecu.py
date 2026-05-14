@@ -3,7 +3,11 @@ import enum
 
 class EcuCommand(enum.Enum):
     ECU_INFO = ("#D50", "Get ECU Info")
-    STREAMING = ("#D01", "Start Streaming")
+    STREAMING_STOP = ("#D01", "Start Streaming")
+    STREAMING_START = ("#D01", "Start Streaming")
+    WRITE_ON_MEMORY = ("#D04", "Write on Memory")
+    LAMBDA_LOOP_CLOSE = ("#D05", "Close Lambda Loop")
+    LAMBDA_LOOP_OPEN = ("#D06", "Open Lambda Loop")
 
     @property
     def description(self) -> str:

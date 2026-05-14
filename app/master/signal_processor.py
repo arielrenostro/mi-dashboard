@@ -1,11 +1,15 @@
-from PyQt6.QtWidgets import QWidget
+import logging
+
+from PyQt6.QtCore import QObject
 from pyqtgraph.Qt.QtCore import Signal
 
 from app.master.log import LOG_PREFIX
 from app.master.signal import Signal as SignalEnum
 
+logger = logging.getLogger(__name__)
 
-class SignalProcessor(QWidget):
+
+class SignalProcessor(QObject):
     emitter = Signal(dict)
 
     def __init__(self):
@@ -42,6 +46,6 @@ class SignalProcessor(QWidget):
                     "value": value,
                     "value_str": signal.value["for_label"](value),
                 }
-            except Exception as e:
-                print(e)
+            except Exception:
+                logger.exception("Erro ao processar sinal %s", signal)
         self.emitter.emit(parsed_data)
