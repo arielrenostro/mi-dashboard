@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 from app.alarm.processor import AlarmProcessor
 from app.dashboard.dashboard import Dashboard
 from app.dashboard.grid import GRID, GRAPH
+from app.event.marker import EventMarker
 from app.log_writer.log_writer import LogWriter
 from app.logger import setup_logging
 from app.master.signal_processor import SignalProcessor
@@ -18,6 +19,7 @@ PORT = "COM1"
 BAUDRATE = 115200
 LOG_FILE = "log_stream.csv"
 ALARM_SOUND = "alarm.wav"
+EVENT_SOUND = "alarm.wav"
 MOCK_FILE = "C:\\Users\\ariel\\OneDrive\\Carros\\206\\Master Injection\\Datalogs\\4Bar - 9\\log_stream_fixed.csv"
 
 
@@ -42,6 +44,10 @@ def main():
     alarm_processor = AlarmProcessor(ALARM_SOUND)
     alarm_processor.emitter.connect(dashboard.fire_field_alarm)
     alarm_processor.start()
+
+    event_marker = EventMarker(EVENT_SOUND)
+    dashboard.key_event.connect(event_marker.handle_key)
+    event_marker.event_triggered.connect(log_writer.set_event_pending)
 
     signal_processor = SignalProcessor()
     signal_processor.emitter.connect(dashboard.process_signals)

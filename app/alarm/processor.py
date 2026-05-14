@@ -1,6 +1,6 @@
 import logging
 
-from PyQt6.QtCore import QThread, pyqtSignal, QUrl
+from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from app.master.signal import Signal
@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 class AlarmProcessor(QThread):
     emitter = pyqtSignal(Signal)
+    _play_requested = pyqtSignal()
+    _stop_requested = pyqtSignal()
 
     def __init__(self, sound):
         super().__init__()
@@ -23,23 +25,32 @@ class AlarmProcessor(QThread):
         self.player.setSource(QUrl.fromLocalFile(sound))
         self.player.mediaStatusChanged.connect(self._handle_status)
 
+        # QueuedConnection: garante execução na main thread independente de qual
+        # thread emite o sinal. AlarmProcessor e player têm o mesmo thread owner
+        # (main thread), então o Qt usaria DirectConnection por padrão — o que
+        # chamaria play/stop na worker thread, violando o thread affinity do player.
+        self._play_requested.connect(self.player.play, Qt.ConnectionType.QueuedConnection)
+        self._stop_requested.connect(self.player.stop, Qt.ConnectionType.QueuedConnection)
+
         self.running = True
 
     def run(self):
+        is_playing = False
         while self.running:
             try:
-                if self._should_play():
-                    if self.player.playbackState() != QMediaPlayer.PlaybackState.PlayingState:
-                        self.player.play()
-                else:
-                    if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-                        self.player.stop()
+                should_play = vehicle_state.is_any_alarm_firing()
+                if should_play and not is_playing:
+                    self._play_requested.emit()
+                    is_playing = True
+                elif not should_play and is_playing:
+                    self._stop_requested.emit()
+                    is_playing = False
             except Exception:
                 logger.exception("Erro no loop do AlarmProcessor")
             self.msleep(100)
 
     def stop(self):
-        self.player.stop()
+        self._stop_requested.emit()
         self.running = False
 
     def process_signals(self, signals):
@@ -61,9 +72,7 @@ class AlarmProcessor(QThread):
             vehicle_state.set_alarm(signal, in_alarm)
 
     def _handle_status(self, status):
+        # chamado na main thread (affinity do player) — player.play() é seguro aqui
         if status == QMediaPlayer.MediaStatus.EndOfMedia:
-            if self._should_play():
+            if vehicle_state.is_any_alarm_firing():
                 self.player.play()
-
-    def _should_play(self):
-        return vehicle_state.is_any_alarm_firing()

@@ -2,7 +2,7 @@ import logging
 from collections import deque
 
 import pyqtgraph as pg
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QGridLayout
@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class Dashboard(QWidget):
+    key_event = pyqtSignal(int)
 
     def __init__(self, grid, graphs, graph_x_size):
         super().__init__()
@@ -43,6 +44,10 @@ class Dashboard(QWidget):
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_graph)
         self.timer.start(100)
+
+    def keyPressEvent(self, event):
+        self.key_event.emit(event.key())
+        super().keyPressEvent(event)
 
     def close(self):
         super().close()
