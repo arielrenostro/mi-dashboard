@@ -247,6 +247,9 @@ class Dashboard(QWidget):
                     labels[signal].setText(label_text)
                     labels[signal].setPos(value_index, value)
 
+                    markers[signal].show()
+                    labels[signal].show()
+
                 else:
                     markers[signal].hide()
                     labels[signal].hide()

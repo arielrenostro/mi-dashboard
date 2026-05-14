@@ -25,10 +25,26 @@ class Signal(enum.Enum):
         "for_label": lambda x: f'{x}',
         "unit": "kPa",
         "min": 20,
-        "max": 200,
+        "max": 250,
         "color": "fuchsia",
         "alarm": {
             "enabled": True,
+            "min": 0,
+            "max": 165,
+        },
+    }
+
+    BOOST = {
+        "name": "Boost",
+        "index": 3,
+        "converter": lambda x: int(x),
+        "for_label": lambda x: f'{x}',
+        "unit": "kPa",
+        "min": 20,
+        "max": 250,
+        "color": "blue",
+        "alarm": {
+            "enabled": False,
             "min": 0,
             "max": 165,
         },
@@ -191,6 +207,22 @@ class Signal(enum.Enum):
             "enabled": True,
             "min": -20,
             "max": 20,
+        },
+    }
+
+    BOOST_TARGET = {
+        "name": "Boost Target",
+        "index": 28,
+        "converter": lambda x: int(x),
+        "for_label": lambda x: f'{x}',
+        "unit": "kPa",
+        "min": 20,
+        "max": 250,
+        "color": "MediumSeaGreen",
+        "alarm": {
+            "enabled": False,
+            "min": None,
+            "max": None,
         },
     }
 
