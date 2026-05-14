@@ -22,7 +22,6 @@ LOG_FILE = f"C:\\Users\\ariel\\OneDrive\\Carros\\206\\Master Injection\\Datalogs
 ALARM_SOUND = "alarm.wav"
 EVENT_SOUND = "alarm.wav"
 MOCK_FILE = "C:\\Users\\ariel\\OneDrive\\Carros\\206\\Master Injection\\Datalogs\\4Bar - 9\\log_stream_fixed.csv"
-MOCK_FILE = False
 
 # ==========================================
 # MAIN
