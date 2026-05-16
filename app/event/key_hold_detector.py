@@ -6,7 +6,7 @@ class KeyHoldDetector(QObject):
 
     def __init__(self, key: Qt.Key, hold_ms: int = 2000):
         super().__init__()
-        self._key = key
+        self._key = int(key)
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(hold_ms)
