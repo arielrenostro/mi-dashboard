@@ -1,4 +1,5 @@
 import enum
+from typing import Any
 
 
 class Signal(enum.Enum):
@@ -292,3 +293,12 @@ class Signal(enum.Enum):
             "max": None,
         },
     }
+
+
+class ParsedSignal:
+
+    def __init__(self, signal: Signal, raw: str | int, value: Any):
+        self.signal = signal
+        self.raw = raw
+        self.value = value
+        self.value_str = signal.value["for_label"](value)

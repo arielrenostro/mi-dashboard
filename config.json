@@ -1,0 +1,49 @@
+{
+  "alarm": {
+    "sound": "alarm.wav"
+  },
+  "connection": {
+    "mock": "C:\\Users\\ariel\\OneDrive\\Carros\\206\\Master Injection\\Datalogs\\4Bar - 9\\log_stream_fixed.csv",
+    "port": "COM1",
+    "baudrate": 115200
+  },
+  "dashboard": {
+    "graph_x_size": 150,
+    "graph": [
+      [
+        "LAMBDA",
+        "LAMBDA_TARGET",
+        "FUEL_TRIM"
+      ],
+      [
+        "BOOST",
+        "BOOST_TARGET",
+        "MAP"
+      ],
+      [
+        "POWER",
+        "TORQUE"
+      ]
+    ],
+    "grid": [
+      [
+        "RPM",
+        "VSS",
+        "MAP",
+        "BOOST",
+        "CLT",
+        "IAT",
+        "POWER"
+      ],
+      [
+        "LAMBDA",
+        "LAMBDA_TARGET",
+        "FUEL_TRIM",
+        "BOOST_TARGET",
+        "INJ_UTIL",
+        "IGN",
+        "TORQUE"
+      ]
+    ]
+  }
+}

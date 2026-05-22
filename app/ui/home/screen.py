@@ -2,7 +2,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QVBoxLayout, QLabel, QWidget
 
-from app.screen.screen import Screen
+from app.ui.base.screen import Screen
 
 
 class HomeScreen(Screen):

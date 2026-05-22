@@ -3,8 +3,8 @@ import logging
 from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
-from app.master.signal import Signal
-from app.vehicle.state import vehicle_state
+from app.masterinjection.signal import Signal
+from app.state.state import vehicle_state
 
 logger = logging.getLogger(__name__)
 

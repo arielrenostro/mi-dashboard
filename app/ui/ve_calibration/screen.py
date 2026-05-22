@@ -1,5 +1,7 @@
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from app.ve_calibration.ve_map_state import ve_map_state
+
+from app.masterinjection.protocol import EcuResponse
+from app.ui.ve_calibration.ve_map_state import ve_map_state
 from PyQt6.QtGui import QFont, QColor
 from PyQt6.QtWidgets import (
     QVBoxLayout,
@@ -15,8 +17,8 @@ from PyQt6.QtWidgets import (
 )
 from pyqtgraph.Qt.QtCore import Slot
 
-from app.master.signal import Signal
-from app.screen.screen import Screen
+from app.masterinjection.signal import Signal
+from app.ui.base.screen import Screen
 
 # Signals shown in the top bar, in order
 _TOP_BAR_SIGNALS = [
@@ -271,7 +273,6 @@ class VeCalibrationScreen(Screen):
 
     def _build_right_panel(self) -> QWidget:
         import pyqtgraph as pg
-        import numpy as np
 
         container = QWidget()
         container.setStyleSheet("background-color: #000000;")
@@ -382,8 +383,8 @@ class VeCalibrationScreen(Screen):
             self.ve_adjustment_made.emit()
 
     def _adjust_ve(self, delta: float):
-        from app.vehicle.state import vehicle_state
-        from app.master.signal import Signal
+        from app.state.state import vehicle_state
+        from app.masterinjection.signal import Signal
 
         rpm_data = vehicle_state.get(Signal.RPM)
         map_data = vehicle_state.get(Signal.MAP)
@@ -500,7 +501,7 @@ class VeCalibrationScreen(Screen):
         # ImageItem expects shape (n_cols, n_rows) = (16, 16)
         # Convert ve_map[row][col] (raw int) → VE% → array[col][row] for ImageItem
         arr = [[ve_map[row][col] / 10 for row in range(16)] for col in range(16)]
-        self._heatmap_image.setImage(arr)
+        self._heatmap_image.setImage(np.array(arr))
 
         # Set the image position/scale to match rpm/map axis ranges
         rpm_min, rpm_max = rpm_axis[0], rpm_axis[-1]
@@ -528,8 +529,8 @@ class VeCalibrationScreen(Screen):
         self._highlight_timer.stop()
 
     def _update_highlight(self):
-        from app.vehicle.state import vehicle_state
-        from app.master.signal import Signal
+        from app.state.state import vehicle_state
+        from app.masterinjection.signal import Signal
 
         rpm_data = vehicle_state.get(Signal.RPM)
         map_data = vehicle_state.get(Signal.MAP)
@@ -570,7 +571,7 @@ class VeCalibrationScreen(Screen):
         except ValueError:
             return
 
-        if cmd == '#I20' and len(values) == 16:
+        if cmd == EcuResponse.MAP_BREAKPOINTS.value and len(values) == 16:
             ve_map_state.load_breakpoints_rpm(values)
             self.refresh_axes()
         elif cmd == '#I21' and len(values) == 16:

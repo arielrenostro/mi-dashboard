@@ -5,7 +5,7 @@ import time
 from PyQt6.QtCore import QThread, QObject
 from pyqtgraph.Qt.QtCore import Slot, Signal
 
-from app.master.log import LOG_PREFIX
+from app.masterinjection.protocol import EcuResponse
 
 
 class Worker(QObject):
@@ -18,7 +18,8 @@ class Worker(QObject):
         self.csv_writer = csv.writer(self.log_file, delimiter=';', lineterminator='\n')
         if not exists:
             self.csv_writer.writerow(
-                ["Timestamp", "Event", "Mess 1", "RPM", "MAP", "Boost", "Load %", "Idle", "Lambda 1", "Inj. Pulse", "Inj. Utiliz.",
+                ["Timestamp", "Event", "Mess 1", "RPM", "MAP", "Boost", "Load %", "Idle", "Lambda 1", "Inj. Pulse",
+                 "Inj. Utiliz.",
                  "VE Value", "Ign. Adv.", "Knock", "A/C Input", "Start Input", "Outputs 1", "Outputs 2", "Lambda 2",
                  "Mess 2", "Batt Volt.", "CLT", "IAT", "Inj. DT", "Ign. Dwell", "KM/H", "Lambda Loop", "Lambda Target",
                  "Lambda Corr", "Strobo Angle", "Turbo Target", "ACC %", "ACP %", "dACC %", "0", "0"])
@@ -47,7 +48,7 @@ class LogWriter(QObject):
         self._event_pending = True
 
     def write(self, line):
-        if not line.startswith(LOG_PREFIX):
+        if not line.startswith(EcuResponse.MESS_DATA_1.value):
             return
         parts = line.split(";")
         if len(parts) < 2:

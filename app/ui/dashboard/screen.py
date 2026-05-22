@@ -5,18 +5,18 @@ import pyqtgraph as pg
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QVBoxLayout, QLabel, QGridLayout
+    QVBoxLayout, QLabel, QGridLayout, QWidget
 )
 from pyqtgraph.Qt.QtCore import Slot
 
-from app.master.signal import Signal
-from app.screen.screen import Screen
-from app.vehicle.state import vehicle_state
+from app.masterinjection.signal import Signal
+from app.ui.base.screen import Screen
+from app.state.state import vehicle_state
 
 logger = logging.getLogger(__name__)
 
 
-class Dashboard(Screen):
+class DashboardScreen(Screen):
     key_event = pyqtSignal(int)
     key_released = pyqtSignal(int)
 
@@ -59,7 +59,7 @@ class Dashboard(Screen):
     def create_grid(self, grid):
         for row_idx in range(len(grid)):
             for col_idx in range(len(grid[row_idx])):
-                signal = grid[row_idx][col_idx]
+                signal = Signal[grid[row_idx][col_idx]]
                 name = signal.value['name']
                 unit = signal.value['unit']
 
@@ -109,6 +109,7 @@ class Dashboard(Screen):
             plot_item.hideAxis("bottom")
 
             for signal in row:
+                signal = Signal[signal]
                 name = signal.value["name"]
                 color = signal.value["color"]
                 min_ = signal.value["min"]

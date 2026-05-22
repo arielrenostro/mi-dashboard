@@ -1,7 +1,10 @@
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QWidget, QStackedWidget
 
-from app.screen.screen import Screen
+from app.config import config
+from app.ui.dashboard.screen import DashboardScreen
+from app.ui.home.screen import HomeScreen
+from app.ui.ve_calibration.screen import VeCalibrationScreen
 
 
 class AppWindow(QWidget):
@@ -16,10 +19,14 @@ class AppWindow(QWidget):
         self.stacked_widget = QStackedWidget()
         self.setLayout(self._create_layout())
 
-        self._screens = {}
+        self._screens = {
+            "home": HomeScreen(),
+            # "ve_calibration": VeCalibrationScreen(),
+            # "dashboard": DashboardScreen(config.dashboard.grid, config.dashboard.graph, config.dashboard.graph_x_size),
+        }
         self._current_screen_name = None
-
         self.showFullScreen()
+        self.show_screen("home")
 
     def _create_layout(self):
         from PyQt6.QtWidgets import QVBoxLayout
@@ -27,11 +34,6 @@ class AppWindow(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.stacked_widget)
         return layout
-
-    def register_screen(self, name: str, screen: Screen):
-        """Register a Screen with a name."""
-        self._screens[name] = screen
-        self.stacked_widget.addWidget(screen)
 
     def show_screen(self, name: str):
         """Show a screen by name. Calls on_deactivated on old, on_activated on new."""

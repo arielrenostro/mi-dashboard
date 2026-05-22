@@ -3,8 +3,8 @@ import logging
 from PyQt6.QtCore import QObject, pyqtSignal, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
-from app.master.ecu import EcuCommand
-from app.vehicle.state import vehicle_state
+from app.masterinjection.protocol import EcuCommand
+from app.state.state import vehicle_state
 
 logger = logging.getLogger(__name__)
 
