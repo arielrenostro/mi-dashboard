@@ -5,7 +5,7 @@ import pyqtgraph as pg
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QVBoxLayout, QLabel, QGridLayout
+    QVBoxLayout, QLabel, QGridLayout, QWidget
 )
 from pyqtgraph.Qt.QtCore import Slot
 

@@ -1,3 +1,4 @@
+import numpy
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from app.ve_calibration.ve_map_state import ve_map_state
 from PyQt6.QtGui import QFont, QColor
@@ -500,7 +501,7 @@ class VeCalibrationScreen(Screen):
         # ImageItem expects shape (n_cols, n_rows) = (16, 16)
         # Convert ve_map[row][col] (raw int) → VE% → array[col][row] for ImageItem
         arr = [[ve_map[row][col] / 10 for row in range(16)] for col in range(16)]
-        self._heatmap_image.setImage(arr)
+        self._heatmap_image.setImage(np.array(arr))
 
         # Set the image position/scale to match rpm/map axis ranges
         rpm_min, rpm_max = rpm_axis[0], rpm_axis[-1]
