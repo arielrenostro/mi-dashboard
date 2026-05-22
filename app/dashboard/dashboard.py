@@ -5,25 +5,23 @@ import pyqtgraph as pg
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QGridLayout
+    QVBoxLayout, QLabel, QGridLayout
 )
 from pyqtgraph.Qt.QtCore import Slot
 
 from app.master.signal import Signal
+from app.screen.screen import Screen
 from app.vehicle.state import vehicle_state
 
 logger = logging.getLogger(__name__)
 
 
-class Dashboard(QWidget):
+class Dashboard(Screen):
     key_event = pyqtSignal(int)
     key_released = pyqtSignal(int)
 
     def __init__(self, grid, graphs, graph_x_size):
         super().__init__()
-
-        self.setWindowTitle("Master Injection Dashboard")
-        self.showFullScreen()
 
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)

@@ -7,6 +7,7 @@ from app.master.ecu import EcuCommand
 
 class EcuConnectionMock(QThread):
     emitter = pyqtSignal(str)
+    map_data_received = pyqtSignal(str)
 
     def __init__(self, mock_file):
         super().__init__()
@@ -17,7 +18,7 @@ class EcuConnectionMock(QThread):
     def connect(self):
         pass
 
-    def send_command(self, cmd: EcuCommand) -> None:
+    def send_command(self, cmd: EcuCommand, args: list = None) -> None:
         pass
 
     def run(self):

@@ -8,10 +8,18 @@ Implementation: `app/event/`, wired in `main.py`.
 
 ## Action table
 
-| Action | Key | Trigger type | Hold duration | Sound | Effect |
-|---|---|---|---|---|---|
-| Event marker | `Return` or `Enter` | Instant (press) | — | `alarm.wav` (one-shot) | Marks next CSV row with `"MARK"` |
-| Lambda loop toggle | `Space` | Hold | 2000 ms | `alarm.wav` (one-shot) | Sends `LAMBDA_LOOP_OPEN` or `LAMBDA_LOOP_CLOSE` to ECU |
+Actions marked **Global** are active on every screen. Actions marked with a screen name are only active on that screen.
+
+| Action | Key | Scope | Trigger type | Hold duration | Sound | Effect |
+|---|---|---|---|---|---|---|
+| Event marker | `Return` / `Enter` | Global | Instant (press) | — | `alarm.wav` (one-shot) | Marks next CSV row with `"MARK"` |
+| Lambda loop toggle | `Space` | Global | Hold | 2000 ms | `alarm.wav` (one-shot) | Sends `LAMBDA_LOOP_OPEN` or `LAMBDA_LOOP_CLOSE` to ECU |
+| Return to home | `ESC` | Global | Instant (press) | — | — | Navigates to HomeScreen |
+| Home menu navigate | `↑` / `↓` | HomeScreen | Instant (press) | — | — | Moves menu selection up/down |
+| Home menu confirm | `Enter` | HomeScreen | Instant (press) | — | — | Opens selected screen |
+| VE increase | `↑` | VE Calibration | Instant (press) | — | — | `adjust_ve(rpm, map, +6.0)` |
+| VE decrease | `↓` | VE Calibration | Instant (press) | — | — | `adjust_ve(rpm, map, -6.0)` |
+| VE reset | `R` | VE Calibration | Instant (press) | — | — | Restores all VE cells to original values |
 
 ---
 
@@ -19,7 +27,7 @@ Implementation: `app/event/`, wired in `main.py`.
 
 ### Instant
 
-Fires on key press. Implementation: `QObject` connected to `Dashboard.key_event(int)`, filters by key code.
+Fires on key press. Implementation: `QObject` connected to `AppWindow.key_event(int)` (global) or `app_window.key_event` filtered inside a specific screen's `handle_key(int)` slot.
 
 ### Hold
 
@@ -79,8 +87,8 @@ Fires after the key is held continuously for the configured duration. Implementa
 
 1. Add a row to the action table above.
 2. Create a `KeyHoldDetector(key=Qt.Key.Key_XYZ, hold_ms=N)`.
-3. Connect `Dashboard.key_event` → `on_key_pressed` and `Dashboard.key_released` → `on_key_released`.
+3. Connect `AppWindow.key_event` → `on_key_pressed` and `AppWindow.key_released` → `on_key_released`.
 4. Connect `triggered` to the action handler.
 5. Wire in `main.py`.
 
-**Note:** `KeyHoldDetector` stores the key as `int(key)` internally to ensure correct comparison with the `int` values emitted by `Dashboard.key_event`.
+**Note:** `KeyHoldDetector` stores the key as `int(key)` internally to ensure correct comparison with the `int` values emitted by `AppWindow.key_event`.

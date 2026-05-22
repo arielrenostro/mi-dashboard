@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 class EcuConnection(QThread):
     emitter = pyqtSignal(str)
+    map_data_received = pyqtSignal(str)  # raw #I20/#I21/#F01-#F16 lines
 
     def __init__(self, port, baudrate):
         super().__init__()
@@ -22,8 +23,9 @@ class EcuConnection(QThread):
         self.d02 = None
         self._command_queue: queue.Queue = queue.Queue()
 
-    def send_command(self, cmd: EcuCommand) -> None:
-        self._command_queue.put(cmd)
+    def send_command(self, cmd: EcuCommand, args: list = None) -> None:
+        """Queue a command. args (optional list) are appended as ';'-separated values."""
+        self._command_queue.put((cmd, args or []))
 
     def connect(self):
         while self.running:
@@ -65,6 +67,8 @@ class EcuConnection(QThread):
                     self.d01 = line
                 elif line.startswith("#D02"):
                     self.d02 = line
+                elif line.startswith(("#I", "#F", "#A")):
+                    self.map_data_received.emit(line)
 
                 if self.d01 and self.d02:
                     self.emitter.emit(f'{self.d01};{self.d02}'.strip())
@@ -89,9 +93,14 @@ class EcuConnection(QThread):
     def _drain_command_queue(self):
         while not self._command_queue.empty():
             try:
-                cmd = self._command_queue.get_nowait()
-                logger.info("Enviando comando: %s", cmd.description)
-                self._send_command(cmd)
+                cmd, args = self._command_queue.get_nowait()
+                if args:
+                    cmd_str = f"{cmd.cmd};{';'.join(str(a) for a in args)}"
+                    logger.info("Enviando comando: %s [%d valores]", cmd.description, len(args))
+                else:
+                    cmd_str = cmd.cmd
+                    logger.info("Enviando comando: %s", cmd.description)
+                self.serial.write(f'{cmd_str}\n'.encode("utf-8"))
             except queue.Empty:
                 break
 

@@ -14,9 +14,15 @@ from app.event.lambda_toggle import LambdaToggle
 from app.event.marker import EventMarker
 from app.log_writer.log_writer import LogWriter
 from app.logger import setup_logging
+from app.master.ecu import EcuCommand
 from app.master.signal_processor import SignalProcessor
 from app.ecu_connection.ecu_connection import EcuConnection
 from app.ecu_connection.ecu_connection_mock import EcuConnectionMock
+from app.screen.app_window import AppWindow
+from app.screen.home_screen import HomeScreen
+from app.ve_calibration.ve_calibration_screen import VeCalibrationScreen
+from app.ve_calibration.ve_map_state import ve_map_state
+from app.ve_calibration.ve_write_controller import VeWriteController
 from app.vehicle.lambda_loop_state_processor import LambdaLoopStateProcessor
 from app.vehicle.state import vehicle_state
 
@@ -36,11 +42,32 @@ def main():
 
     app = QApplication(sys.argv)
 
+    app_window = AppWindow()
+
     dashboard = Dashboard(
         grid=GRID,
         graphs=GRAPH,
         graph_x_size=150,
     )
+
+    home_screen = HomeScreen()
+
+    ve_calibration_screen = VeCalibrationScreen()
+    ve_calibration_screen.populate_ve_table(
+        ve_map_state.rpm_axis,
+        ve_map_state.map_axis,
+        ve_map_state.ve_map,
+    )
+
+    ve_write_controller = VeWriteController(EVENT_SOUND)
+
+    app_window.register_screen("home", home_screen)
+    app_window.register_screen("dashboard", dashboard)
+    app_window.register_screen("ve_calibration", ve_calibration_screen)
+    app_window.show_screen("home")
+
+    home_screen.screen_requested.connect(app_window.show_screen)
+
     log_writer = LogWriter(
         log_file=LOG_FILE,
     )
@@ -66,6 +93,11 @@ def main():
     event_marker = EventMarker(EVENT_SOUND)
     event_marker.event_triggered.connect(log_writer.set_event_pending)
 
+    app_window.key_event.connect(event_marker.handle_key)
+    app_window.key_event.connect(space_detector.on_key_pressed)
+    app_window.key_event.connect(ve_calibration_screen.handle_key)
+    app_window.key_released.connect(space_detector.on_key_released)
+
     dashboard.key_event.connect(event_marker.handle_key)
     dashboard.key_event.connect(space_detector.on_key_pressed)
     dashboard.key_released.connect(space_detector.on_key_released)
@@ -75,14 +107,27 @@ def main():
     signal_processor.emitter.connect(alarm_processor.process_signals)
     signal_processor.emitter.connect(vehicle_state.update)
     signal_processor.emitter.connect(lambda_loop_processor.process_signals)
+    signal_processor.emitter.connect(ve_calibration_screen.process_signals)
+
+    ve_calibration_screen.ve_adjustment_made.connect(ve_write_controller.on_adjustment_made)
+    ve_write_controller.command_requested.connect(ecu_connection.send_command)
+    ecu_connection.map_data_received.connect(ve_calibration_screen.receive_map_data)
 
     ecu_connection.emitter.connect(signal_processor.process_line)
     ecu_connection.emitter.connect(log_writer.write)
     ecu_connection.start()
 
+    # Request breakpoints and full VE map from ECU on startup
+    ecu_connection.send_command(EcuCommand.READ_RPM_BREAKPOINTS)
+    ecu_connection.send_command(EcuCommand.READ_MAP_BREAKPOINTS)
+    for row in range(16):
+        ecu_connection.send_command(EcuCommand.ve_row(row))
+
+    app_window.show()
+
     app.exec()
 
-    dashboard.close()
+    app_window.close()
     alarm_processor.stop()
     ecu_connection.stop()
 

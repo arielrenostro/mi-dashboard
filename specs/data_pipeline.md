@@ -24,13 +24,22 @@ Implementation: `main.py` (wiring), `app/` (all modules).
                └─────────────────────┘                                       │
                                                                              │ parsed_data
           ┌──────────────────────────────────────────────────────────────────┤
-          │                     │                     │                      │
-          ▼                     ▼                     ▼                      ▼
-  Dashboard             AlarmProcessor         VehicleState       LambdaLoopStateProcessor
-  process_signals()     process_signals()      update()           process_signals()
-  (UI update)           (alarm check)          (shared state)     (effective loop state)
+          │                     │                     │                      │                      │
+          ▼                     ▼                     ▼                      ▼                      ▼
+  Dashboard             AlarmProcessor         VehicleState       LambdaLoopStateProcessor  VeCalibrationScreen
+  process_signals()     process_signals()      update()           process_signals()          process_signals()
+  (UI update)           (alarm check)          (shared state)     (effective loop state)     (top bar update)
 
   LogWriter.write(str)  ◄──── EcuConnection.emitter (raw line, not parsed)
+
+  VeCalibrationScreen._highlight_timer (100 ms)
+      └── reads vehicle_state.get(RPM/MAP)
+      └── ve_map_state.calculate_interpolation_weights()
+      └── highlight_interpolation() + mark_modified_cells() + update_heatmap()
+
+  VeCalibrationScreen.ve_adjustment_made
+      └── VeWriteController.on_adjustment_made()
+              └── (after 1 s debounce) EcuConnection.send_command(WRITE_ON_MEMORY)
 ```
 
 ---
@@ -46,6 +55,7 @@ Implementation: `main.py` (wiring), `app/` (all modules).
 | 5 | `SignalProcessor` | `emitter(dict)` | `VehicleState.update()` |
 | 6 | `SignalProcessor` | `emitter(dict)` | `LambdaLoopStateProcessor.process_signals()` |
 | 7 | `AlarmProcessor` | `emitter(Signal)` | `Dashboard.fire_field_alarm()` |
+| 8 | `SignalProcessor` | `emitter(dict)` | `VeCalibrationScreen.process_signals()` |
 
 ---
 
@@ -53,13 +63,16 @@ Implementation: `main.py` (wiring), `app/` (all modules).
 
 | Step | Producer | Signal/call | Consumer |
 |---|---|---|---|
-| 1 | `Dashboard` | `key_event(int)` | `EventMarker.handle_key()` |
-| 2 | `Dashboard` | `key_event(int)` | `KeyHoldDetector.on_key_pressed()` |
-| 3 | `Dashboard` | `key_released(int)` | `KeyHoldDetector.on_key_released()` |
-| 4 | `KeyHoldDetector` | `triggered()` | `LambdaToggle.handle_trigger()` |
-| 5 | `LambdaToggle` | `command_requested(EcuCommand)` | `EcuConnection.send_command()` |
-| 6 | `LambdaToggle` | `command_requested(EcuCommand)` | `LambdaLoopStateProcessor.on_command_sent()` |
-| 7 | `EventMarker` | `event_triggered()` | `LogWriter.set_event_pending()` |
+| 1 | `AppWindow` | `key_event(int)` | `EventMarker.handle_key()` |
+| 2 | `AppWindow` | `key_event(int)` | `KeyHoldDetector.on_key_pressed()` |
+| 3 | `AppWindow` | `key_released(int)` | `KeyHoldDetector.on_key_released()` |
+| 4 | `AppWindow` | `key_event(int)` | `VeCalibrationScreen.handle_key()` |
+| 5 | `KeyHoldDetector` | `triggered()` | `LambdaToggle.handle_trigger()` |
+| 6 | `LambdaToggle` | `command_requested(EcuCommand)` | `EcuConnection.send_command()` |
+| 7 | `LambdaToggle` | `command_requested(EcuCommand)` | `LambdaLoopStateProcessor.on_command_sent()` |
+| 8 | `EventMarker` | `event_triggered()` | `LogWriter.set_event_pending()` |
+| 9 | `VeCalibrationScreen` | `ve_adjustment_made()` | `VeWriteController.on_adjustment_made()` |
+| 10 | `VeWriteController` | `command_requested(EcuCommand)` | `EcuConnection.send_command()` |
 
 ---
 
@@ -102,14 +115,21 @@ When a toggle command is sent by the user, `LambdaLoopStateProcessor.on_command_
 ## Startup sequence
 
 ```
-1. setup_logging()
-2. QApplication created
-3. Dashboard, LogWriter, AlarmProcessor instantiated and connected
-4. EcuConnection or EcuConnectionMock chosen based on MOCK_FILE
-5. LambdaLoopStateProcessor, LambdaToggle, KeyHoldDetector, EventMarker instantiated and connected
-6. SignalProcessor instantiated and connected to all consumers
-7. EcuConnection.emitter connected to SignalProcessor and LogWriter
-8. AlarmProcessor.start(), EcuConnection.start()
-9. app.exec()  ← Qt event loop runs until window is closed
-10. dashboard.close(), alarm_processor.stop(), ecu_connection.stop()
+1.  setup_logging()
+2.  QApplication created
+3.  AppWindow created (full-screen, QStackedWidget)
+4.  Dashboard, VeCalibrationScreen, HomeScreen instantiated
+5.  VeCalibrationScreen populated with default VE map axes
+6.  Screens registered: "home", "dashboard", "ve_calibration"
+7.  HomeScreen.screen_requested connected to AppWindow.show_screen
+8.  LogWriter, AlarmProcessor instantiated and connected
+9.  EcuConnection or EcuConnectionMock chosen based on MOCK_FILE
+10. LambdaLoopStateProcessor, LambdaToggle, KeyHoldDetector, EventMarker instantiated and connected
+11. VeWriteController instantiated and connected to VeCalibrationScreen + EcuConnection
+12. SignalProcessor instantiated and connected to all consumers (Dashboard, AlarmProcessor, VehicleState, LambdaLoopStateProcessor, VeCalibrationScreen)
+13. EcuConnection.emitter connected to SignalProcessor and LogWriter
+14. AlarmProcessor.start(), EcuConnection.start()
+15. AppWindow.show()  ← displays HomeScreen
+16. app.exec()  ← Qt event loop runs until window is closed
+17. app_window.close(), alarm_processor.stop(), ecu_connection.stop()
 ```
