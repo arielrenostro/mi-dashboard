@@ -1,7 +1,11 @@
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import QVBoxLayout, QLabel, QWidget
+from typing import Callable
 
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import QVBoxLayout, QLabel, QWidget, QHBoxLayout
+
+from app.config import config
+from app.ecu_connection import get_ecu_connection
 from app.ui.base.screen import Screen
 
 
@@ -10,15 +14,16 @@ class HomeScreen(Screen):
 
     screen_requested = pyqtSignal(str)
 
-    def __init__(self):
-        super().__init__()
-
-        self.setStyleSheet("background-color: black;")
+    def __init__(self, close_fn: Callable):
+        super().__init__(close_fn)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(40)
         layout.addStretch()
+
+        self.setStyleSheet("background-color:black;")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         # Title
         title = QLabel("Master Injection")
@@ -29,11 +34,52 @@ class HomeScreen(Screen):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
+        # Status
+        status_font = QFont("Arial", 14)
+        status_connection = QLabel()
+        status_connection.setFont(status_font)
+        if config.connection.mock != '':
+            if len(config.connection.mock) > 40:
+                status_connection.setText(f"Mock: ...{config.connection.mock[-40:]} | ")
+            else:
+                status_connection.setText(f"Mock: {config.connection.mock} | ")
+        else:
+            status_connection.setText(f"Port: {config.connection.port} | Baudrate: {config.connection.baudrate} | ")
+
+        status_dot = QLabel()
+        status_dot.setFixedSize(12, 12)
+
+        status_label = QLabel()
+        status_label.setFont(status_font)
+
+        status_layout = QHBoxLayout()
+        status_layout.setContentsMargins(0, 0, 0, 0)
+        status_layout.setSpacing(8)
+        status_layout.addWidget(status_connection)
+        status_layout.addWidget(status_dot)
+        status_layout.addWidget(status_label)
+        status_layout.addStretch()
+
+        status_container = QWidget()
+        status_container.setLayout(status_layout)
+        layout.addWidget(status_container, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        def _update_status():
+            if get_ecu_connection().is_connected():
+                status_label.setText("Connected")
+                status_dot.setStyleSheet("background-color: #2ecc71; border-radius: 6px;")
+            else:
+                status_label.setText("Disconnected")
+                status_dot.setStyleSheet("background-color: #e74c3c; border-radius: 6px;")
+
+        self._status_timer = QTimer()
+        self._status_timer.timeout.connect(_update_status)
+
         # Menu items container
         menu_container = QWidget()
         menu_layout = QVBoxLayout(menu_container)
         menu_layout.setContentsMargins(0, 0, 0, 0)
-        menu_layout.setSpacing(20)
+        menu_layout.setSpacing(10)
 
         self._menu_items = [
             ("Dashboard", "dashboard"),
@@ -52,7 +98,7 @@ class HomeScreen(Screen):
         layout.addWidget(menu_container, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # Keyboard hint at bottom
-        hint = QLabel("↑↓ Navegar  Enter Selecionar")
+        hint = QLabel("↑↓ Navegar | Enter Selecionar")
         hint_font = QFont("Arial", 14)
         hint.setFont(hint_font)
         hint.setStyleSheet("color: gray;")
@@ -63,6 +109,12 @@ class HomeScreen(Screen):
 
         self._selected = 0
         self._update_selection_ui()
+
+    def on_activated(self):
+        self._status_timer.start(500)
+
+    def on_deactivated(self):
+        self._status_timer.stop()
 
     def _update_selection_ui(self):
         """Update the visual state of menu items based on selection."""

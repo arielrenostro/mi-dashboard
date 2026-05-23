@@ -1,36 +1,39 @@
 import logging
 from collections import deque
+from typing import Dict
 
 import pyqtgraph as pg
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QFont, QKeyEvent
 from PyQt6.QtWidgets import (
-    QVBoxLayout, QLabel, QGridLayout, QWidget
+    QVBoxLayout, QGridLayout
 )
 from pyqtgraph.Qt.QtCore import Slot
 
-from app.masterinjection.signal import Signal
-from app.ui.base.screen import Screen
+from app.masterinjection.signal import Signal, ParsedSignal
 from app.state.state import vehicle_state
+from app.ui.base.screen import Screen
+from app.ui.components.signal_card import SignalCard
 
 logger = logging.getLogger(__name__)
 
 
 class DashboardScreen(Screen):
-    key_event = pyqtSignal(int)
-    key_released = pyqtSignal(int)
 
-    def __init__(self, grid, graphs, graph_x_size):
-        super().__init__()
+    def __init__(self, close_fn, grid, graphs, graph_x_size):
+        super().__init__(close_fn)
 
         self.layout = QVBoxLayout()
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(4)
         self.setLayout(self.layout)
 
         self.grid = QGridLayout()
+        self.grid.setSpacing(4)
         self.layout.addLayout(self.grid)
 
-        self.labels = {}
-        self.create_grid(grid)
+        self.labels: Dict[Signal, SignalCard] = {}
+        self._create_grid(grid)
 
         self.curves = {}
         self.buffers = {}
@@ -38,66 +41,31 @@ class DashboardScreen(Screen):
         self.peak_labels = {}
         self.min_markers = {}
         self.min_labels = {}
-        self.create_graphs(graphs, graph_x_size)
+        self._create_graphs(graphs, graph_x_size)
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_graph)
+
+    def on_activated(self):
         self.timer.start(100)
 
-    def keyPressEvent(self, event):
-        self.key_event.emit(event.key())
-        super().keyPressEvent(event)
-
-    def keyReleaseEvent(self, event):
-        self.key_released.emit(event.key())
-        super().keyReleaseEvent(event)
-
-    def close(self):
-        super().close()
+    def on_deactivated(self):
         self.timer.stop()
 
-    def create_grid(self, grid):
+    def keyPressEvent(self, event: QKeyEvent):
+        if event.key() == Qt.Key.Key_Escape:
+            self.close_fn()
+
+    def _create_grid(self, grid):
         for row_idx in range(len(grid)):
             for col_idx in range(len(grid[row_idx])):
                 signal = Signal[grid[row_idx][col_idx]]
-                name = signal.value['name']
-                unit = signal.value['unit']
+                card = SignalCard(signal)
 
-                cell_widget = QWidget()
-                cell_widget.setStyleSheet("background-color:black;")
+                self.grid.addWidget(card, row_idx, col_idx)
+                self.labels[signal] = card
 
-                cell_layout = QVBoxLayout(cell_widget)
-                cell_layout.setContentsMargins(8, 4, 8, 4)
-                cell_layout.setSpacing(0)
-
-                if unit != "":
-                    small_label = QLabel(f"{name} ({unit})")
-                else:
-                    small_label = QLabel(f"{name}")
-                small_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-
-                small_font = QFont("Arial", 14)
-                small_font.setBold(True)
-                small_label.setFont(small_font)
-
-                small_label.setStyleSheet("color: gray;")
-
-                big_label = QLabel("--")
-                big_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-
-                big_font = QFont("Arial", 56)
-                big_font.setBold(True)
-                big_label.setFont(big_font)
-
-                big_label.setStyleSheet("color: white;")
-
-                cell_layout.addWidget(small_label)
-                cell_layout.addWidget(big_label)
-
-                self.grid.addWidget(cell_widget, row_idx, col_idx)
-                self.labels[signal] = (cell_widget, big_label)
-
-    def create_graphs(self, graphs, graph_x_size):
+    def _create_graphs(self, graphs, graph_x_size):
         for row in graphs:
             plot_widget = pg.PlotWidget()
             self.layout.addWidget(plot_widget)
@@ -186,7 +154,7 @@ class DashboardScreen(Screen):
                 self.buffers[signal] = deque(maxlen=graph_x_size)
 
     @Slot(dict)
-    def process_signals(self, parsed_data):
+    def on_signal_received(self, parsed_data: Dict[Signal, ParsedSignal]):
         for signal in self.labels.keys():
             try:
                 data = parsed_data.get(signal)
@@ -198,10 +166,10 @@ class DashboardScreen(Screen):
         for signal, buff in self.buffers.items():
             data = parsed_data.get(signal)
             if data:
-                buff.append(data["value"])
+                buff.append(data.value)
 
-    def update_display(self, signal, data):
-        value = data["value"]
+    def update_display(self, signal: Signal, data: ParsedSignal):
+        value = data.value
         alarm = signal.value["alarm"]
         color = signal.value["color"]
 
@@ -217,13 +185,13 @@ class DashboardScreen(Screen):
             color = "red"
             in_alarm = alarm["enabled"]
 
-        container, label = self.labels[signal]
-        label.setText(data["value_str"])
+        card = self.labels[signal]
+        card.set_value(data.value_str)
 
         firing = vehicle_state.is_alarm_firing(signal)
 
         if not in_alarm and not firing:
-            label.setStyleSheet(f"color:{color};")
+            card.set_text_color(color)
 
     def update_graph(self):
         for signal, curve in self.curves.items():
@@ -263,19 +231,19 @@ class DashboardScreen(Screen):
         if signal not in self.labels:
             return
 
-        container, label = self.labels[signal]
+        card = self.labels[signal]
 
         def _fn(i):
             def __fn():
                 if not vehicle_state.is_alarm_firing(signal):
-                    container.setStyleSheet("background-color:black;")
+                    card.setStyleSheet("background-color:black;")
                     return
                 QTimer.singleShot(200, _fn(i + 1))
-                label.setStyleSheet("color:red;")
+                card.set_text_color("red")
                 if i % 2 == 0:
-                    container.setStyleSheet("background-color:black;")
+                    card.setStyleSheet("background-color:black;")
                 else:
-                    container.setStyleSheet("background-color:yellow;")
+                    card.setStyleSheet("background-color:yellow;")
 
             return __fn
 

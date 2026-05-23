@@ -22,6 +22,12 @@ class EcuConnection(ABC):
     def run(self):
         pass
 
-    @abstractmethod
+    def start(self):
+        self.running = True
+
     def stop(self):
+        self.running = False
+
+    @abstractmethod
+    def is_connected(self) -> bool:
         pass

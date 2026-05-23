@@ -1,5 +1,7 @@
 import bisect
 
+from app.state.state import vehicle_state
+
 
 class VeMapState:
     """
@@ -13,15 +15,9 @@ class VeMapState:
     Cells that were sent but differ from original are still visible via get_visually_modified().
     """
 
-    # Placeholder axes used before ECU responds. Overwritten by load_breakpoints_*.
-    DEFAULT_RPM_AXIS = [500, 750, 1000, 1250, 1500, 1750, 2000, 2500,
-                        3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500]
-    DEFAULT_MAP_AXIS = [10, 20, 30, 40, 50, 60, 70, 80, 90,
-                        100, 110, 120, 130, 140, 150, 160]
-
     def __init__(self):
-        self.rpm_axis: list = list(self.DEFAULT_RPM_AXIS)
-        self.map_axis: list = list(self.DEFAULT_MAP_AXIS)
+        self.rpm_axis: list = vehicle_state.get_rpm_breakpoints()
+        self.map_axis: list = vehicle_state.get_map_breakpoints()
         # Raw ECU integers: 1000 = 100.0% VE (placeholder until ECU responds)
         self.ve_map: list = [[1000] * 16 for _ in range(16)]
         self.original_ve_map: list = [[1000] * 16 for _ in range(16)]
@@ -53,8 +49,7 @@ class VeMapState:
         for col in range(16):
             raw = int(values[col])
             self.original_ve_map[row][col] = raw
-            if (row, col) not in self.modified_cells:
-                self.ve_map[row][col] = raw
+            self.ve_map[row][col] = raw
 
     # ── Cell access ──────────────────────────────────────────────────────────
 
@@ -134,17 +129,13 @@ class VeMapState:
             row1 = row2 - 1
             t_map = (map_val - self.map_axis[row1]) / (self.map_axis[row2] - self.map_axis[row1])
 
-        raw = {
-            (row1, col1): (1.0 - t_map) * (1.0 - t_rpm),
-            (row1, col2): (1.0 - t_map) * t_rpm,
-            (row2, col1): t_map * (1.0 - t_rpm),
-            (row2, col2): t_map * t_rpm,
-        }
-
         weights: dict = {}
-        for key, w in raw.items():
-            if w >= 0.001:
-                weights[key] = weights.get(key, 0.0) + w
+        for r, t_r in [(row1, 1.0 - t_map), (row2, t_map)]:
+            for c, t_c in [(col1, 1.0 - t_rpm), (col2, t_rpm)]:
+                w = t_r * t_c
+                if w >= 0.001:
+                    key = (r, c)
+                    weights[key] = weights.get(key, 0.0) + w
         return weights
 
     def adjust_ve(self, rpm: float, map_val: float, delta_pct: float):

@@ -6,6 +6,7 @@ import serial
 
 from app.ecu_connection import EcuConnection
 from app.masterinjection.protocol import EcuCommand, EcuResponse
+from app.state.state import vehicle_state
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,9 @@ class EcuConnectionSerial(EcuConnection):
             except:
                 pass
 
+    def is_connected(self) -> bool:
+        return self.serial.is_open
+
     def connect(self):
         while self.running:
             try:
@@ -73,6 +77,8 @@ class EcuConnectionSerial(EcuConnection):
                     logger.info("Conectado.")
 
                 self._start_communication()
+                self._fetch_breakpoints()
+                self._fetch_ve_map()
                 self._start_streaming()
                 return
             except Exception as e:
@@ -98,6 +104,40 @@ class EcuConnectionSerial(EcuConnection):
                 self.serial.write(f'{cmd_str}\n'.encode("utf-8"))
             except queue.Empty:
                 break
+
+    def _fetch_breakpoints(self):
+        logger.debug("Obtendo breakpoints...")
+        map_breakpoint_response = self._send_and_retry(
+            EcuCommand.MAP_BREAKPOINTS,
+            [EcuResponse.MAP_BREAKPOINTS]
+        )
+        if map_breakpoint_response and len(map_breakpoint_response) > 0:
+            rpm_breakpoint_response = self._send_and_retry(
+                EcuCommand.RPM_BREAKPOINTS,
+                [EcuResponse.RPM_BREAKPOINTS]
+            )
+            if rpm_breakpoint_response and len(rpm_breakpoint_response) > 0:
+                map_breakpoint = list(map(lambda x: int(x), map_breakpoint_response.split(";")[1:]))
+                rpm_breakpoint = list(map(lambda x: int(x), rpm_breakpoint_response.split(";")[1:]))
+                vehicle_state.set_map_breakpoints(map_breakpoint)
+                vehicle_state.set_rpm_breakpoints(rpm_breakpoint)
+                logger.info(f"Breakpoints RPM: {rpm_breakpoint}")
+                logger.info(f"Breakpoints MAP: {map_breakpoint}")
+                return
+        logger.warning("Streaming não iniciado.")
+
+    def _fetch_ve_map(self):
+        logger.debug("Obtendo VE map...")
+        for i in range(1, 16):
+            cmd = EcuCommand[f"VE_ROW_{i}"]
+            resp = self._send_and_retry(cmd, [EcuResponse[f"VE_ROW_{i}"]])
+            if resp and len(resp) > 0:
+                ve_line = list(map(lambda x: int(x), resp.split(";")[1:]))
+                vehicle_state.set_ve_map(ve_line, i-1)
+        ve_map = vehicle_state.get_ve_map()
+        for i, ve_line in reversed(list(enumerate(ve_map))):
+            logger.info(f"Fuel Map: {i} {ve_line}")
+
 
     def _start_streaming(self):
         logger.debug("Iniciando streaming...")

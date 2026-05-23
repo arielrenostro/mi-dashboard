@@ -47,9 +47,8 @@ def main():
 
     # TODO -> Registrar na instancia de dashboard
     # alarm_processor.emitter.connect(dashboard.fire_field_alarm)
-    # signal_processor.emitter.connect(dashboard.process_signals)
 
-    app_window = AppWindow()
+    app_window = AppWindow(signal_processor)
     app_window.show()
 
     # dashboard = Dashboard(

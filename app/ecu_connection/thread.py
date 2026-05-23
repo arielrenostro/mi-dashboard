@@ -14,11 +14,12 @@ class EcuConnectionThread(QThread):
 
     def start(self, **kwargs):
         super().start(**kwargs)
+        self.ecu_connection.start()
         self.running = True
 
     def stop(self):
+        self.ecu_connection.stop()
         self.running = False
-        self.ecu_connection.running = False
 
     def run(self):
         while self.running:

@@ -1,7 +1,8 @@
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QWidget, QStackedWidget
 
 from app.config import config
+from app.masterinjection.signal_processor import SignalProcessor
 from app.ui.dashboard.screen import DashboardScreen
 from app.ui.home.screen import HomeScreen
 from app.ui.ve_calibration.screen import VeCalibrationScreen
@@ -10,23 +11,51 @@ from app.ui.ve_calibration.screen import VeCalibrationScreen
 class AppWindow(QWidget):
     """Main application window that manages multiple screens."""
 
-    key_event = pyqtSignal(int)
-    key_released = pyqtSignal(int)
-
-    def __init__(self):
+    def __init__(self, signal_processor: SignalProcessor):
         super().__init__()
+        self._signal_processor = signal_processor
 
         self.stacked_widget = QStackedWidget()
         self.setLayout(self._create_layout())
 
-        self._screens = {
-            "home": HomeScreen(),
-            # "ve_calibration": VeCalibrationScreen(),
-            # "dashboard": DashboardScreen(config.dashboard.grid, config.dashboard.graph, config.dashboard.graph_x_size),
-        }
+        self._screens = {}
         self._current_screen_name = None
+
+        self._register_screens()
+
         self.showFullScreen()
         self.show_screen("home")
+
+    def _register_screens(self):
+        home_screen = HomeScreen(close_fn=lambda: self.close() )
+        home_screen.screen_requested.connect(lambda x: self.show_screen(x))
+
+        ve_calibration_screen = VeCalibrationScreen(close_fn=lambda: self.show_screen("home"))
+
+        dashboard_screen = DashboardScreen(
+            close_fn=lambda: self.show_screen("home"),
+            grid=config.dashboard.grid,
+            graphs=config.dashboard.graph,
+            graph_x_size=config.dashboard.graph_x_size,
+        )
+        self._signal_processor.emitter.connect(dashboard_screen.on_signal_received)
+
+        self._register_screen(
+            "home",
+            home_screen,
+        )
+        self._register_screen(
+            "dashboard",
+            dashboard_screen,
+        )
+        self._register_screen(
+            "ve_calibration",
+            ve_calibration_screen,
+        )
+
+    def _register_screen(self, name: str, screen):
+        self._screens[name] = screen
+        self.stacked_widget.addWidget(screen)
 
     def _create_layout(self):
         from PyQt6.QtWidgets import QVBoxLayout
@@ -51,19 +80,12 @@ class AppWindow(QWidget):
         self._current_screen_name = name
         new_screen.on_activated()
 
-    def go_home(self):
-        """Navigate to the home screen."""
-        self.show_screen("home")
-
     def keyPressEvent(self, event):
         """Handle key press events."""
-        if event.key() == Qt.Key.Key_Escape:
-            self.go_home()
-        else:
-            self.key_event.emit(event.key())
+        self._screens[self._current_screen_name].keyPressEvent(event)
         super().keyPressEvent(event)
 
     def keyReleaseEvent(self, event):
         """Handle key release events."""
-        self.key_released.emit(event.key())
+        self._screens[self._current_screen_name].keyReleaseEvent(event)
         super().keyReleaseEvent(event)

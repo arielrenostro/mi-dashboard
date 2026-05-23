@@ -1,8 +1,7 @@
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from collections.abc import Callable
 
-from app.masterinjection.protocol import EcuResponse
-from app.ui.ve_calibration.ve_map_state import ve_map_state
-from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QFont, QColor, QKeyEvent
 from PyQt6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
@@ -11,14 +10,18 @@ from PyQt6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QAbstractItemView,
+    QAbstractScrollArea,
     QHeaderView,
     QFrame,
-    QSizePolicy,
 )
 from pyqtgraph.Qt.QtCore import Slot
 
 from app.masterinjection.signal import Signal
+from app.state.event import VehicleStateChangeEvent, EventType
+from app.state.state import vehicle_state
 from app.ui.base.screen import Screen
+from app.ui.components.signal_card import SignalCard
+from app.ui.ve_calibration.ve_map_state import ve_map_state
 
 # Signals shown in the top bar, in order
 _TOP_BAR_SIGNALS = [
@@ -51,8 +54,8 @@ class VeCalibrationScreen(Screen):
 
     ve_adjustment_made = pyqtSignal()
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, close_fn: Callable):
+        super().__init__(close_fn)
 
         self.setStyleSheet("background-color: black;")
 
@@ -81,7 +84,12 @@ class VeCalibrationScreen(Screen):
         # ── Interpolation highlight timer ─────────────────────────────────────
         self._highlight_timer = QTimer()
         self._highlight_timer.timeout.connect(self._update_highlight)
-        self._highlight_timer.start(100)
+
+        vehicle_state.emitter.connect(self._on_vehicle_state_event)
+
+    def keyPressEvent(self, event: QKeyEvent):
+        if event.key() == Qt.Key.Key_Escape:
+            self.close_fn()
 
     # ── Construction helpers ─────────────────────────────────────────────────
 
@@ -94,53 +102,19 @@ class VeCalibrationScreen(Screen):
 
     def _build_top_bar(self) -> QWidget:
         container = QWidget()
-        container.setFixedHeight(80)
         container.setStyleSheet("background-color: #000000;")
 
         layout = QHBoxLayout(container)
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(0)
 
-        self._top_bar_labels: dict[Signal, tuple[QLabel, QLabel]] = {}
-
-        name_font = QFont("Arial", 12)
-        name_font.setBold(True)
-
-        value_font = QFont("Arial", 40)
-        value_font.setBold(True)
+        self._top_bar_labels: dict[Signal, SignalCard] = {}
 
         for i, signal in enumerate(_TOP_BAR_SIGNALS):
-            sig_val = signal.value
-            name = sig_val["name"]
-            unit = sig_val["unit"]
-            header_text = f"{name} ({unit})" if unit else name
+            card = SignalCard(signal)
+            layout.addWidget(card)
 
-            cell = QWidget()
-            cell.setStyleSheet(
-                "background-color: #000000;"
-                + ("border-left: 1px solid #333333;" if i > 0 else "")
-            )
-            cell.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-
-            cell_layout = QVBoxLayout(cell)
-            cell_layout.setContentsMargins(8, 2, 8, 2)
-            cell_layout.setSpacing(0)
-
-            name_label = QLabel(header_text)
-            name_label.setFont(name_font)
-            name_label.setStyleSheet("color: #888888;")
-            name_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-
-            value_label = QLabel("--")
-            value_label.setFont(value_font)
-            value_label.setStyleSheet("color: #FFFFFF;")
-            value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-
-            cell_layout.addWidget(name_label)
-            cell_layout.addWidget(value_label)
-
-            layout.addWidget(cell)
-            self._top_bar_labels[signal] = (name_label, value_label)
+            self._top_bar_labels[signal] = card
 
         return container
 
@@ -152,9 +126,9 @@ class VeCalibrationScreen(Screen):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Left panel — VE Map table (60%)
+        # Left panel — VE Map table (natural size)
         left_panel = self._build_left_panel()
-        layout.addWidget(left_panel, stretch=60)
+        layout.addWidget(left_panel, stretch=0)
 
         # Thin vertical separator
         v_line = QFrame()
@@ -163,9 +137,9 @@ class VeCalibrationScreen(Screen):
         v_line.setStyleSheet("background-color: #333333; border: none;")
         layout.addWidget(v_line)
 
-        # Right panel — graph placeholder (40%)
+        # Right panel — graph fills remaining space
         right_panel = self._build_right_panel()
-        layout.addWidget(right_panel, stretch=40)
+        layout.addWidget(right_panel, stretch=1)
 
         return container
 
@@ -186,8 +160,8 @@ class VeCalibrationScreen(Screen):
         header.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(header)
 
-        # Table: 16 rows × 17 columns (col 0 = MAP axis label, cols 1-16 = RPM values)
-        table = QTableWidget(16, 17)
+        # Table: 16 rows × 16 columns
+        table = QTableWidget(16, 16)
         table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -234,7 +208,7 @@ class VeCalibrationScreen(Screen):
 
         # Column headers: col 0 is the MAP-axis label column; cols 1-16 are RPM values
         table.setHorizontalHeaderItem(0, self._header_item("MAP\\RPM"))
-        for col in range(1, 17):
+        for col in range(16):
             table.setHorizontalHeaderItem(col, self._header_item("—"))
 
         # Row headers: MAP values (populated later)
@@ -243,17 +217,7 @@ class VeCalibrationScreen(Screen):
 
         # Fill all cells with placeholder
         for row in range(16):
-            # Col 0: MAP axis value — duplicate of the vertical header for layout clarity
-            map_item = QTableWidgetItem("—")
-            map_item.setTextAlignment(
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-            )
-            map_item.setFont(cell_font)
-            map_item.setBackground(QColor("#111111"))
-            map_item.setForeground(QColor("#888888"))
-            table.setItem(row, 0, map_item)
-
-            for col in range(1, 17):
+            for col in range(1, 16):
                 item = QTableWidgetItem("—")
                 item.setTextAlignment(
                     Qt.AlignmentFlag.AlignCenter
@@ -263,8 +227,9 @@ class VeCalibrationScreen(Screen):
                 item.setForeground(QColor(_DEFAULT_TEXT_COLOR))
                 table.setItem(row, col, item)
 
-        # Adjust column 0 (MAP axis) to be slightly wider
-        table.setColumnWidth(0, 52)
+        table.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustToContents)
+        table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         layout.addWidget(table, stretch=1)
         self.ve_table = table
@@ -349,20 +314,19 @@ class VeCalibrationScreen(Screen):
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    @Slot(dict)
-    def process_signals(self, parsed_data: dict):
+    def _update_top_bar(self):
         """Update top-bar labels from the latest parsed_data snapshot."""
-        for signal, (name_label, value_label) in self._top_bar_labels.items():
-            data = parsed_data.get(signal)
+        for signal, card in self._top_bar_labels.items():
+            data = vehicle_state.get(signal)
             if data:
-                value_label.setText(data["value_str"])
+                card.set_value(data.value_str)
 
                 # Colour LAMBDA_LOOP: green = Closed, orange = Open
                 if signal is Signal.LAMBDA_LOOP:
-                    if data["value"] == 1:
-                        value_label.setStyleSheet("color: #00FF00;")  # green
+                    if data.value == 1:
+                        card.set_text_color("#00FF00")  # green
                     else:
-                        value_label.setStyleSheet("color: #FF8800;")  # orange
+                        card.set_text_color("#FF8800")  # green
 
     @Slot(int)
     def handle_key(self, key: int):
@@ -396,10 +360,10 @@ class VeCalibrationScreen(Screen):
         self.ve_adjustment_made.emit()
 
     def populate_ve_table(
-        self,
-        rpm_axis: list,
-        map_axis: list,
-        ve_map: list,
+            self,
+            rpm_axis: list,
+            map_axis: list,
+            ve_map: list,
     ):
         """Populate the 16×16 VE table.
 
@@ -416,22 +380,23 @@ class VeCalibrationScreen(Screen):
         # Column headers (RPM values)
         for col_idx, rpm_val in enumerate(rpm_axis):
             self.ve_table.setHorizontalHeaderItem(
-                col_idx + 1, self._header_item(str(rpm_val))
+                col_idx, self._header_item(str(rpm_val))
             )
 
         for row_idx, map_val in enumerate(map_axis):
+            display_row = 15 - row_idx
             # Vertical row header
             self.ve_table.setVerticalHeaderItem(
-                row_idx, self._header_item(str(map_val))
+                display_row, self._header_item(str(map_val))
             )
 
             # Col 0: MAP axis label cell
-            map_item = self.ve_table.item(row_idx, 0)
+            map_item = self.ve_table.item(display_row, 0)
             if map_item is None:
                 map_item = QTableWidgetItem()
                 map_item.setBackground(QColor("#111111"))
                 map_item.setForeground(QColor("#888888"))
-                self.ve_table.setItem(row_idx, 0, map_item)
+                self.ve_table.setItem(display_row, 0, map_item)
             map_item.setText(str(map_val))
             map_item.setFont(row_header_font)
             map_item.setTextAlignment(
@@ -440,11 +405,11 @@ class VeCalibrationScreen(Screen):
 
             # VE value cells (cols 1-16); ve_map contains raw ECU ints → display as raw/10
             for col_idx, ve_raw in enumerate(ve_map[row_idx]):
-                item = self.ve_table.item(row_idx, col_idx + 1)
+                item = self.ve_table.item(display_row, col_idx)
                 if item is None:
                     item = QTableWidgetItem()
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.ve_table.setItem(row_idx, col_idx + 1, item)
+                    self.ve_table.setItem(display_row, col_idx, item)
                 item.setText(f"{ve_raw / 10:.1f}")
                 item.setFont(cell_font)
                 item.setBackground(QColor(_DEFAULT_CELL_BG))
@@ -458,12 +423,13 @@ class VeCalibrationScreen(Screen):
                      highlight (#FF6600), weight=0.0 → default background.
                      Cells absent from the dict revert to the default background.
         """
-        for row in range(16):
-            for col in range(1, 17):
-                item = self.ve_table.item(row, col)
+        for data_row in range(16):
+            display_row = 15 - data_row
+            for col in range(16):
+                item = self.ve_table.item(display_row, col)
                 if item is None:
                     continue
-                weight = weights.get((row, col - 1), 0.0)
+                weight = weights.get((data_row, col), 0.0)
                 if weight > 0.0:
                     item.setBackground(QColor(_interpolate_color(weight)))
                 else:
@@ -477,12 +443,13 @@ class VeCalibrationScreen(Screen):
                       ve_map indices — col is the RPM index, not the table
                       column index which is offset by 1).
         """
-        for row in range(16):
-            for col in range(1, 17):
-                item = self.ve_table.item(row, col)
+        for data_row in range(16):
+            display_row = 15 - data_row
+            for col in range(1, 16):
+                item = self.ve_table.item(display_row, col)
                 if item is None:
                     continue
-                if (row, col - 1) in modified:
+                if (data_row, col) in modified:
                     item.setForeground(QColor(_MODIFIED_TEXT_COLOR))
                 else:
                     item.setForeground(QColor(_DEFAULT_TEXT_COLOR))
@@ -538,78 +505,58 @@ class VeCalibrationScreen(Screen):
         if rpm_data is None or map_data is None:
             return
 
-        rpm = rpm_data["value"]
-        map_val = map_data["value"]
-
-        weights = ve_map_state.calculate_interpolation_weights(rpm, map_val)
+        weights = ve_map_state.calculate_interpolation_weights(rpm_data.value, map_data.value)
         self.highlight_interpolation(weights)
         self.mark_modified_cells(ve_map_state.get_visually_modified())
         self.update_heatmap(ve_map_state.ve_map, ve_map_state.rpm_axis, ve_map_state.map_axis, weights)
         self._refresh_ve_values()
+        self._update_top_bar()
 
     def _refresh_ve_values(self):
-        for row in range(16):
+        for data_row in range(16):
+            display_row = 15 - data_row
             for col in range(16):
-                item = self.ve_table.item(row, col + 1)
+                item = self.ve_table.item(display_row, col)
                 if item is not None:
-                    item.setText(f"{ve_map_state.ve_map[row][col] / 10:.1f}")
+                    item.setText(f"{ve_map_state.ve_map[data_row][col]}")
 
-    # ── ECU map data reception ────────────────────────────────────────────────
-
-    @Slot(str)
-    def receive_map_data(self, line: str):
-        """
-        Parse and apply a raw ECU map data line (#I20, #I21, or #F01-#F16).
-        Connected to EcuConnection.map_data_received.
-        """
-        parts = line.strip().split(';')
-        if not parts:
-            return
-        cmd = parts[0]
-        try:
-            values = [int(v) for v in parts[1:] if v.strip()]
-        except ValueError:
-            return
-
-        if cmd == EcuResponse.MAP_BREAKPOINTS.value and len(values) == 16:
-            ve_map_state.load_breakpoints_rpm(values)
+    def _on_vehicle_state_event(self, event: VehicleStateChangeEvent):
+        if event.type_ == EventType.MAP_BREAKPOINTS:
+            ve_map_state.load_breakpoints_map(event.args[0])
             self.refresh_axes()
-        elif cmd == '#I21' and len(values) == 16:
-            ve_map_state.load_breakpoints_map(values)
+        elif event.type_ == EventType.RPM_BREAKPOINTS:
+            ve_map_state.load_breakpoints_rpm(event.args[0])
             self.refresh_axes()
-        elif len(cmd) == 3 and cmd[0] == '#' and cmd[1] == 'F':
-            try:
-                row_num = int(cmd[2:]) - 1  # #F01 → 0, #F16 → 15
-                if 0 <= row_num <= 15 and len(values) == 16:
-                    ve_map_state.load_row(row_num, values)
-                    self.update_row(row_num)
-            except ValueError:
-                pass
+        elif event.type_ == EventType.FUEL_MAP:
+            ve_map_state.load_row(event.args[0], event.args[1])
+            self.update_row(event.args[0])
 
     def refresh_axes(self):
         """Update table column/row headers from the current ve_map_state axes."""
         for col_idx, rpm_val in enumerate(ve_map_state.rpm_axis):
-            self.ve_table.setHorizontalHeaderItem(col_idx + 1, self._header_item(str(rpm_val)))
+            self.ve_table.setHorizontalHeaderItem(col_idx, self._header_item(str(rpm_val)))
 
         row_header_font = QFont("Arial", 10)
         row_header_font.setBold(True)
         for row_idx, map_val in enumerate(ve_map_state.map_axis):
-            self.ve_table.setVerticalHeaderItem(row_idx, self._header_item(str(map_val)))
-            map_item = self.ve_table.item(row_idx, 0)
+            display_row = 15 - row_idx
+            self.ve_table.setVerticalHeaderItem(display_row, self._header_item(str(map_val)))
+            map_item = self.ve_table.item(display_row, 0)
             if map_item is not None:
                 map_item.setText(str(map_val))
                 map_item.setFont(row_header_font)
 
-    def update_row(self, row: int):
+    def update_row(self, data_row: int):
         """Refresh the display of a single VE table row from ve_map_state."""
+        display_row = 15 - data_row
         cell_font = QFont("Arial", 10)
         for col in range(16):
-            item = self.ve_table.item(row, col + 1)
+            item = self.ve_table.item(display_row, col)
             if item is None:
                 item = QTableWidgetItem()
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 item.setFont(cell_font)
                 item.setBackground(QColor(_DEFAULT_CELL_BG))
                 item.setForeground(QColor(_DEFAULT_TEXT_COLOR))
-                self.ve_table.setItem(row, col + 1, item)
-            item.setText(f"{ve_map_state.ve_map[row][col] / 10:.1f}")
+                self.ve_table.setItem(display_row, col, item)
+            item.setText(f"{ve_map_state.ve_map[data_row][col]}")
