@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import QVBoxLayout, QLabel, QWidget, QHBoxLayout
 
 from app.config import config
 from app.ecu_connection import get_ecu_connection
+from app.ecu_connection.ecu_connection import EcuConnectionStatus
 from app.ui.base.screen import Screen
 
 
@@ -38,6 +39,7 @@ class HomeScreen(Screen):
         status_font = QFont("Arial", 14)
         status_connection = QLabel()
         status_connection.setFont(status_font)
+        status_connection.setStyleSheet("color: white;")
         if config.connection.mock != '':
             if len(config.connection.mock) > 40:
                 status_connection.setText(f"Mock: ...{config.connection.mock[-40:]} | ")
@@ -51,6 +53,7 @@ class HomeScreen(Screen):
 
         status_label = QLabel()
         status_label.setFont(status_font)
+        status_label.setStyleSheet("color: white;")
 
         status_layout = QHBoxLayout()
         status_layout.setContentsMargins(0, 0, 0, 0)
@@ -65,12 +68,25 @@ class HomeScreen(Screen):
         layout.addWidget(status_container, alignment=Qt.AlignmentFlag.AlignCenter)
 
         def _update_status():
-            if get_ecu_connection().is_connected():
+            status = get_ecu_connection().get_connection_status()
+            if status == EcuConnectionStatus.CONNECTED:
                 status_label.setText("Connected")
                 status_dot.setStyleSheet("background-color: #2ecc71; border-radius: 6px;")
-            else:
+            elif status == EcuConnectionStatus.CONNECTING:
+                status_label.setText("Connecting")
+                status_dot.setStyleSheet("background-color: #e7c53c; border-radius: 6px;")
+            elif status == EcuConnectionStatus.HANDSHAKE:
+                status_label.setText("Handshake")
+                status_dot.setStyleSheet("background-color: #e7c53c; border-radius: 6px;")
+            elif status == EcuConnectionStatus.ERROR:
+                status_label.setText("Error")
+                status_dot.setStyleSheet("background-color: #e74c3c; border-radius: 6px;")
+            elif status == EcuConnectionStatus.DISCONNECTED:
                 status_label.setText("Disconnected")
                 status_dot.setStyleSheet("background-color: #e74c3c; border-radius: 6px;")
+            else:
+                status_label.setText("Unknow")
+                status_dot.setStyleSheet("background-color: gray; border-radius: 6px;")
 
         self._status_timer = QTimer()
         self._status_timer.timeout.connect(_update_status)

@@ -3,7 +3,7 @@ import time
 from typing import Any, List
 
 from app.ecu_connection import EcuConnection
-from app.ecu_connection.serial import EcuConnectionSerial
+from app.ecu_connection.ecu_connection import EcuConnectionStatus
 from app.masterinjection.protocol import EcuCommand
 from app.state.state import vehicle_state
 
@@ -97,3 +97,6 @@ class EcuConnectionMock(EcuConnection):
 
     def is_connected(self) -> bool:
         return self.running
+
+    def get_connection_status(self) -> EcuConnectionStatus:
+        return EcuConnectionStatus.CONNECTED if self.running else EcuConnectionStatus.DISCONNECTED

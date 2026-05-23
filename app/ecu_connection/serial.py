@@ -5,6 +5,7 @@ from typing import List, Optional, Any
 import serial
 
 from app.ecu_connection import EcuConnection
+from app.ecu_connection.ecu_connection import EcuConnectionStatus
 from app.masterinjection.protocol import EcuCommand, EcuResponse
 from app.state.state import vehicle_state
 
@@ -21,6 +22,7 @@ class EcuConnectionSerial(EcuConnection):
         self.d02 = None
         self._command_queue: queue.Queue = queue.Queue()
         self.count_zero = 0
+        self._connection_status = EcuConnectionStatus.DISCONNECTED
 
     def send_command(self, cmd: EcuCommand, args: List[Any] | None = None) -> None:
         """Queue a command. args (optional list) are appended as ';'-separated values."""
@@ -60,6 +62,7 @@ class EcuConnectionSerial(EcuConnection):
 
         except Exception as e:
             logger.warning("Conexão perdida. Reconectando... %s", e)
+            self._connection_status = EcuConnectionStatus.ERROR
             try:
                 self._close()
             except:
@@ -68,18 +71,24 @@ class EcuConnectionSerial(EcuConnection):
     def is_connected(self) -> bool:
         return self.serial.is_open
 
+    def get_connection_status(self) -> EcuConnectionStatus:
+        return self._connection_status
+
     def connect(self):
         while self.running:
             try:
                 if not self.serial.is_open:
                     logger.info("Tentando conectar...")
+                    self._connection_status = EcuConnectionStatus.CONNECTING
                     self.serial.open()
                     logger.info("Conectado.")
 
+                self._connection_status = EcuConnectionStatus.HANDSHAKE
                 self._start_communication()
                 self._fetch_breakpoints()
                 self._fetch_ve_map()
                 self._start_streaming()
+                self._connection_status = EcuConnectionStatus.CONNECTED
                 return
             except Exception as e:
                 logger.warning("Falha ao tentar conectar. Erro: %s", e)
@@ -192,5 +201,6 @@ class EcuConnectionSerial(EcuConnection):
             self.serial.close()
         except:
             pass
+        self._connection_status = EcuConnectionStatus.DISCONNECTED
         self.d01 = None
         self.d02 = None
