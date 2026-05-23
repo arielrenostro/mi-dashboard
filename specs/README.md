@@ -54,3 +54,7 @@ Each spec file describes one concern of the system. Files use consistent formats
 | `alarm_system.md` | Alarm thresholds, audio behavior, visual flash pattern |
 | `data_pipeline.md` | Data flow, threading model, component wiring |
 | `logging.md` | CSV format, column definitions, event marking |
+| `screen_navigation.md` | Multi-screen architecture: AppWindow, Screen base class, HomeScreen, navigation rules |
+| `ve_map_model.md` | VE map data model, axis definitions, bilinear interpolation algorithm, edit API |
+| `ve_calibration_screen.md` | VE calibration screen layout, live highlighting, keyboard editing |
+| `ve_write.md` | Deferred VE map write to ECU: debounce, command dispatch, audio feedback |

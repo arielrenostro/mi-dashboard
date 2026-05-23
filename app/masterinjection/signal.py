@@ -1,4 +1,5 @@
 import enum
+from typing import Any
 
 
 class Signal(enum.Enum):
@@ -197,7 +198,7 @@ class Signal(enum.Enum):
     FUEL_TRIM = {
         "name": "Fuel Trim",
         "index": 26,
-        "converter": lambda x: (float(x)- 1000) / 10,
+        "converter": lambda x: (float(x) - 1000) / 10,
         "for_label": lambda x: f'{x:.1f}',
         "unit": "%",
         "min": -20,
@@ -262,9 +263,9 @@ class Signal(enum.Enum):
         "name": "Power",
         "calculated": True,
         "value": lambda x:
-        (((x[Signal.MAP]['value'] * x[Signal.VE]['value'] * 10 * 0.001587 * x[Signal.RPM]['value'])
-          / (287 * (x[Signal.IAT]['value'] + 273) * 2 * 60)
-          / (9 * x[Signal.LAMBDA]['value'])) * 3600 * 2.20462) / 0.8,
+        (((x[Signal.MAP].value * x[Signal.VE].value * 10 * 0.001587 * x[Signal.RPM].value)
+          / (287 * (x[Signal.IAT].value + 273) * 2 * 60)
+          / (9 * x[Signal.LAMBDA].value)) * 3600 * 2.20462) / 0.8,
         "for_label": lambda x: f'{x:.1f}',
         "unit": "HP",
         "min": 0,
@@ -280,7 +281,7 @@ class Signal(enum.Enum):
     TORQUE = {
         "name": "Torque",
         "calculated": True,
-        "value": lambda x: (x[Signal.POWER]['value'] * 716.2) / max(x[Signal.RPM]['value'], 1),
+        "value": lambda x: (x[Signal.POWER].value * 716.2) / max(x[Signal.RPM].value, 1),
         "for_label": lambda x: f'{x:.1f}',
         "unit": "Kgf.m",
         "min": 0,
@@ -292,3 +293,12 @@ class Signal(enum.Enum):
             "max": None,
         },
     }
+
+
+class ParsedSignal:
+
+    def __init__(self, signal: Signal, raw: str | int, value: Any):
+        self.signal = signal
+        self.raw = raw
+        self.value = value
+        self.value_str = signal.value["for_label"](value)

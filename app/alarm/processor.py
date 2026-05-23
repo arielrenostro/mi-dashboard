@@ -1,10 +1,11 @@
 import logging
+from typing import Dict
 
 from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
-from app.master.signal import Signal
-from app.vehicle.state import vehicle_state
+from app.masterinjection.signal import Signal, ParsedSignal
+from app.state.state import vehicle_state
 
 logger = logging.getLogger(__name__)
 
@@ -53,18 +54,17 @@ class AlarmProcessor(QThread):
         self._stop_requested.emit()
         self.running = False
 
-    def process_signals(self, signals):
+    def process_signals(self, signals: Dict[Signal, ParsedSignal]):
         for signal, data in signals.items():
-            value = data["value"]
             alarm = signal.value["alarm"]
 
             in_alarm = False
-            min_ = alarm["min"] if alarm["min"] is None or isinstance(alarm["min"], (int, float)) else alarm["min"](value)
-            max_ = alarm["max"] if alarm["max"] is None or isinstance(alarm["max"], (int, float)) else alarm["max"](value)
+            min_ = alarm["min"] if alarm["min"] is None or isinstance(alarm["min"], (int, float)) else alarm["min"](data.value)
+            max_ = alarm["max"] if alarm["max"] is None or isinstance(alarm["max"], (int, float)) else alarm["max"](data.value)
 
-            if min_ is not None and value < min_:
+            if min_ is not None and data.value < min_:
                 in_alarm = alarm["enabled"]
-            elif max_ is not None and value > max_:
+            elif max_ is not None and data.value > max_:
                 in_alarm = alarm["enabled"]
 
             if in_alarm and not vehicle_state.is_alarm_firing(signal):

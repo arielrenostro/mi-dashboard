@@ -43,13 +43,13 @@ Signal indices in `signals.md` refer to absolute positions in this joined string
 Defined in `EcuCommand` enum (`app/master/ecu.py`).
 
 | Enum name | Command string | Description |
-|---|---|---|
-| `ECU_INFO` | `#D50` | Request ECU info (handshake) |
-| `STREAMING_START` | `#D01` | Start data streaming |
-| `STREAMING_STOP` | `#D01` | Stop data streaming (same command) |
-| `WRITE_ON_MEMORY` | `#D04` | Write to ECU memory |
-| `LAMBDA_LOOP_CLOSE` | `#D05` | Close the lambda feedback loop |
-| `LAMBDA_LOOP_OPEN` | `#D06` | Open the lambda feedback loop |
+|---|----------------|---|
+| `ECU_INFO` | `#D50`         | Request ECU info (handshake) |
+| `STREAMING_START` | `#D01`         | Start data streaming |
+| `STREAMING_STOP` | `#D00`         | Stop data streaming |
+| `WRITE_ON_MEMORY` | `#D04`         | Write to ECU memory |
+| `LAMBDA_LOOP_CLOSE` | `#D05`         | Close the lambda feedback loop |
+| `LAMBDA_LOOP_OPEN` | `#D06`         | Open the lambda feedback loop |
 
 Commands are sent as `"{cmd}\n"` encoded in UTF-8.
 
