@@ -90,6 +90,13 @@ class VeCalibrationScreen(Screen):
     def keyPressEvent(self, event: QKeyEvent):
         if event.key() == Qt.Key.Key_Escape:
             self.close_fn()
+        elif event.key() == Qt.Key.Key_Up:
+            self._adjust_ve(+6.0)
+        elif event.key() == Qt.Key.Key_Down:
+            self._adjust_ve(-6.0)
+        elif event.key() == Qt.Key.Key_R:
+            ve_map_state.reset()
+            self.ve_adjustment_made.emit()
 
     # ── Construction helpers ─────────────────────────────────────────────────
 
@@ -257,19 +264,19 @@ class VeCalibrationScreen(Screen):
         plot_widget = pg.PlotWidget()
         plot_widget.setBackground("#000000")
         plot_widget.setLabel("bottom", "RPM", color="#888888")
-        plot_widget.setLabel("left", "MAP (kPa)", color="#888888")
+        plot_widget.setLabel("left", "VE (%)", color="#888888")
+        plot_widget.showGrid(x=True, y=True, alpha=0.2)
 
-        # ImageItem: rows=MAP axis (y), cols=RPM axis (x), value=VE
-        # pyqtgraph ImageItem expects shape (cols, rows) = (16, 16) with x=cols, y=rows
-        # Use a ColorMap from dark blue (low VE) → orange/yellow (high VE)
-        try:
-            colormap = pg.colormap.get("CET-L1")
-        except Exception:
-            colormap = pg.colormap.get("inferno")
-
-        image_item = pg.ImageItem()
-        image_item.setColorMap(colormap)
-        plot_widget.addItem(image_item)
+        # One line per MAP row: blue (low MAP) → orange (high MAP)
+        ve_lines = []
+        for i in range(16):
+            t = i / 15.0
+            r = int(0 + t * 255)
+            g = int(136 - t * 136)
+            b = int(255 - t * 255)
+            curve = pg.PlotCurveItem(pen=pg.mkPen(color=(r, g, b), width=1))
+            plot_widget.addItem(curve)
+            ve_lines.append(curve)
 
         # Scatter for active interpolation point
         scatter = pg.ScatterPlotItem(size=12, pen=pg.mkPen("white", width=2), brush=pg.mkBrush("red"))
@@ -277,8 +284,8 @@ class VeCalibrationScreen(Screen):
 
         layout.addWidget(plot_widget, stretch=1)
 
-        self.graph_placeholder = header  # keep reference for backward compat
-        self._heatmap_image = image_item
+        self.graph_placeholder = header
+        self._ve_lines = ve_lines
         self._heatmap_scatter = scatter
         self._heatmap_plot = plot_widget
 
@@ -328,24 +335,6 @@ class VeCalibrationScreen(Screen):
                     else:
                         card.set_text_color("#FF8800")  # green
 
-    @Slot(int)
-    def handle_key(self, key: int):
-        """Handle keyboard input for VE map editing.
-
-        - Up arrow: +6 VE
-        - Down arrow: -6 VE
-        - R key: reset to original values
-
-        Space key (lambda loop toggle) is handled globally and should NOT be intercepted here.
-        """
-        if key == Qt.Key.Key_Up:
-            self._adjust_ve(+6.0)
-        elif key == Qt.Key.Key_Down:
-            self._adjust_ve(-6.0)
-        elif key == Qt.Key.Key_R:
-            ve_map_state.reset()
-            self.ve_adjustment_made.emit()
-
     def _adjust_ve(self, delta: float):
         from app.state.state import vehicle_state
         from app.masterinjection.signal import Signal
@@ -356,7 +345,7 @@ class VeCalibrationScreen(Screen):
         if rpm_data is None or map_data is None:
             return
 
-        ve_map_state.adjust_ve(rpm_data["value"], map_data["value"], delta)
+        ve_map_state.adjust_ve(rpm_data.value, map_data.value, delta)
         self.ve_adjustment_made.emit()
 
     def populate_ve_table(
@@ -455,34 +444,23 @@ class VeCalibrationScreen(Screen):
                     item.setForeground(QColor(_DEFAULT_TEXT_COLOR))
 
     def update_heatmap(self, ve_map: list, rpm_axis: list, map_axis: list, weights: dict):
-        """Update the heatmap image and scatter point.
+        """Update VE line chart and scatter point.
 
         Args:
-            ve_map: 16x16 list[list[float]], ve_map[row][col] where row=MAP idx, col=RPM idx
+            ve_map: 16x16 list[list[int]], ve_map[row][col] where row=MAP idx, col=RPM idx (raw ECU ints)
             rpm_axis: list of 16 RPM values (ascending)
             map_axis: list of 16 MAP values (ascending, kPa)
             weights: {(row, col): float} from interpolation, or empty dict
         """
-        import numpy as np
+        rpm_arr = rpm_axis
 
-        # ImageItem expects shape (n_cols, n_rows) = (16, 16)
-        # Convert ve_map[row][col] (raw int) → VE% → array[col][row] for ImageItem
-        arr = [[ve_map[row][col] / 10 for row in range(16)] for col in range(16)]
-        self._heatmap_image.setImage(np.array(arr))
+        for row_idx, curve in enumerate(self._ve_lines):
+            ve_row = [ve_map[row_idx][col] / 10 for col in range(16)]
+            curve.setData(rpm_arr, ve_row)
 
-        # Set the image position/scale to match rpm/map axis ranges
-        rpm_min, rpm_max = rpm_axis[0], rpm_axis[-1]
-        map_min, map_max = map_axis[0], map_axis[-1]
-        self._heatmap_image.setRect(
-            rpm_min, map_min,
-            rpm_max - rpm_min,
-            map_max - map_min,
-        )
-
-        # Scatter: show weighted centroid of active cells
         if weights:
             cx = sum(rpm_axis[col] * w for (row, col), w in weights.items())
-            cy = sum(map_axis[row] * w for (row, col), w in weights.items())
+            cy = sum(ve_map[row][col] / 10 * w for (row, col), w in weights.items())
             self._heatmap_scatter.setData([cx], [cy])
         else:
             self._heatmap_scatter.setData([], [])
