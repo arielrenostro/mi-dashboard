@@ -15,11 +15,13 @@ A real-time telemetry dashboard for the Master Injection ECU. Streams sensor dat
 - **Full-screen live display** — large high-contrast numeric values with automatic color coding (green = in range, red = out of limits)
 - **Real-time graphs** — multi-axis buffered plots with peak/min markers, updated every 100 ms
 - **Audible alarms** — plays a `.wav` file while any signal stays outside its configured limits; 2-second cooldown prevents spam
-- **Manual event marking** — press **Enter** during a session to beep and stamp `MARK` on the next CSV row, useful for flagging moments of interest during a run
-- **Lambda loop toggle** — hold **Space** for 2 seconds to toggle between open and closed lambda loop; plays a sound and sends the ECU command immediately
+- **VE map calibration** — live 16×16 VE map viewer with heatmap coloring, bilinear interpolation highlight of the current operating point, and keyboard-driven ±5 adjustments written to ECU with 1-second debounce
+- **Lambda loop control** — open and close the lambda loop from the VE calibration screen with a keystroke; plays a configurable sound on each command
 - **CSV logging** — appends every ECU frame with a millisecond Unix timestamp and an optional event label
 - **Automatic reconnection** — detects dropped Bluetooth connections and reconnects without restarting the app
 - **Mock mode** — replay a previously recorded CSV file instead of connecting to hardware
+- **Manual event marking** *(pending)* — press **Enter** during a session to beep and stamp `MARK` on the next CSV row
+- **Lambda loop toggle via hold** *(pending)* — hold **Space** for 2 seconds to toggle lambda loop from any screen
 
 ---
 
@@ -96,14 +98,92 @@ Signal definitions (name, ECU index, unit, limits, graph color, alarm thresholds
 
 ---
 
+## Screens
+
+The app uses a full-screen stacked layout. Navigation between screens is keyboard-only. **Esc** always returns to the Home screen (or closes the app if already on Home).
+
+---
+
+### Home Screen
+
+The entry point of the application. Displays the app title, connection status, and a navigable menu.
+
+**Layout:**
+- Title: `Master Injection` centered at the top
+- Connection status: port/baudrate (or mock file path) + a colored dot — green when connected, red when disconnected. Refreshed every 500 ms.
+- Menu items: `Dashboard` and `Calibração de VE`
+- Keyboard hint at the bottom
+
+**Keyboard:**
+
+| Key | Action |
+|-----|--------|
+| **↑ / ↓** | Move selection up/down |
+| **Enter** | Open the selected screen |
+| **Esc** | Exit the application |
+
+---
+
+### Dashboard Screen
+
+Full-screen live telemetry display. Shows all active signals as numeric cards and plots them on real-time graphs.
+
+**Layout:**
+- **Signal grid** — rows and columns configured in `dashboard.grid` (`config.json`). Each cell is a `SignalCard` showing the signal name, current value, and unit. Color is green by default and turns red when the value is outside alarm limits.
+- **Graphs** — one plot per group in `dashboard.graph`. Each plot can show multiple signals on independent Y-axes (right-side), with a shared X-axis. Every signal has its own color defined in `signal.py`. Peak and minimum markers with value labels float over each curve. Graphs refresh every 100 ms.
+
+**Behavior:**
+- Cards turn red when a limit is crossed. A visual flash (alternating black/yellow background) is triggered when an alarm fires (pending full wiring).
+- Graph buffers keep the last `graph_x_size` samples (default 150). Older data scrolls out of view.
+
+**Keyboard:**
+
+| Key | Action |
+|-----|--------|
+| **Esc** | Return to Home screen |
+
+---
+
+### VE Calibration Screen
+
+Live VE (Volumetric Efficiency) map viewer and editor. Allows real-time adjustment of the ECU's 16×16 fuel map while the engine is running, with visual feedback of the current operating point.
+
+**Layout:**
+
+- **Top bar** — a row of `SignalCard` widgets showing live values for: RPM, MAP, VE, Lambda, Lambda Target, Fuel Trim, and Lambda Loop state. `LAMBDA_LOOP` is colored green (closed loop) or orange (open loop). Refreshed every 100 ms.
+- **VE Map table (left panel)** — 16×16 grid. Rows are MAP (kPa) values (high at top, low at bottom); columns are RPM values. Cells are colored with a heatmap: dark blue (low VE) → green → yellow → red (high VE). The cells surrounding the current operating point are highlighted in orange, weighted by bilinear interpolation. Modified cells are shown in cyan text.
+- **VE Graph (right panel)** — line chart with one curve per MAP row (blue = low MAP, orange = high MAP). Shows the shape of the entire VE map across RPM. Overlaid scatter points mark all 256 map nodes; the active interpolation region is highlighted. A lime dot marks the current VE reading from the ECU; a cyan dot marks the predicted `VE_LAMBDA` value (visible only in closed loop).
+- **Footer** — keyboard hint bar.
+
+**Behavior:**
+- Operating point is computed every 100 ms from the latest RPM and MAP values using bilinear interpolation weights.
+- VE adjustments are debounced 1 second before sending the `WRITE_ON_MEMORY` command to the ECU.
+- A `.wav` sound plays on each VE adjustment, loop open, and loop close.
+- Resetting the map reverts all cells to original values.
+
+**Keyboard:**
+
+| Key | Action |
+|-----|--------|
+| **↑** | Increase VE by +5 at the current operating point |
+| **↓** | Decrease VE by −5 at the current operating point |
+| **O** | Send `LAMBDA_LOOP_OPEN` command to ECU + play sound |
+| **P** | Send `LAMBDA_LOOP_CLOSE` command to ECU + play sound |
+| **R** | Reset all VE cells to original (pre-session) values |
+| **Esc** | Return to Home screen |
+
+---
+
 ## Keyboard shortcuts
 
 | Key | Screen | Action | Status |
 |-----|--------|--------|--------|
-| **Esc** | Any | Return to home screen (or exit from home) | Active |
+| **Esc** | Any | Return to Home screen (or exit from Home) | Active |
 | **↑ / ↓** | Home | Navigate menu | Active |
 | **Enter** | Home | Open selected screen | Active |
-| **↑ / ↓** | VE Calibration | Adjust VE ±6 at current operating point | Active |
+| **↑ / ↓** | VE Calibration | Adjust VE ±5 at current operating point | Active |
+| **O** | VE Calibration | Open lambda loop | Active |
+| **P** | VE Calibration | Close lambda loop | Active |
 | **R** | VE Calibration | Reset all VE cells to original values | Active |
 | **Enter** | Any | Beep + stamp `MARK` on the next CSV row | Pending |
 | **Space** (hold 2 s) | Any | Toggle lambda loop open ↔ closed | Pending |
