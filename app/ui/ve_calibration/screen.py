@@ -327,9 +327,9 @@ class VeCalibrationScreen(Screen):
             plot_widget.addItem(curve)
             ve_lines.append(curve)
 
-        # Scatter: interpolated VE from table (red)
-        scatter_table = pg.ScatterPlotItem(size=12, pen=pg.mkPen("white", width=2), brush=pg.mkBrush("red"))
-        plot_widget.addItem(scatter_table)
+        # Map grid points: small squares at each VE map node, colored by interpolation weight
+        map_points_scatter = pg.ScatterPlotItem()
+        plot_widget.addItem(map_points_scatter)
 
         # Scatter: actual VE signal from ECU (lime)
         scatter_signal = pg.ScatterPlotItem(size=12, pen=pg.mkPen("white", width=2), brush=pg.mkBrush("lime"))
@@ -339,7 +339,7 @@ class VeCalibrationScreen(Screen):
 
         self.graph_placeholder = header
         self._ve_lines = ve_lines
-        self._heatmap_scatter = scatter_table
+        self._map_points_scatter = map_points_scatter
         self._ve_signal_scatter = scatter_signal
         self._heatmap_plot = plot_widget
 
@@ -519,12 +519,35 @@ class VeCalibrationScreen(Screen):
             ve_row = [ve_map[row_idx][col] / 10 for col in range(16)]
             curve.setData(rpm_arr, ve_row)
 
-        if weights:
-            cx = sum(rpm_axis[col] * w for (row, col), w in weights.items())
-            cy = sum(ve_map[row][col] / 10 * w for (row, col), w in weights.items())
-            self._heatmap_scatter.setData([cx], [cy])
-        else:
-            self._heatmap_scatter.setData([], [])
+        import pyqtgraph as pg
+
+        spots = []
+        if rpm_axis and ve_map:
+            for row_idx in range(min(16, len(ve_map))):
+                for col_idx in range(min(16, len(rpm_axis))):
+                    x = rpm_axis[col_idx]
+                    y = ve_map[row_idx][col_idx] / 10
+                    weight = weights.get((row_idx, col_idx), 0.0)
+                    if weight > 0.0:
+                        r = int(60 + (255 - 60) * weight)
+                        g = int(60 + (102 - 60) * weight)
+                        b = max(0, int(60 - 60 * weight))
+                        spots.append({
+                            'x': x, 'y': y,
+                            'brush': pg.mkBrush(r, g, b),
+                            'pen': pg.mkPen('white', width=1),
+                            'size': 9,
+                            'symbol': 's',
+                        })
+                    else:
+                        spots.append({
+                            'x': x, 'y': y,
+                            'brush': pg.mkBrush(50, 50, 50),
+                            'pen': pg.mkPen(None),
+                            'size': 5,
+                            'symbol': 's',
+                        })
+        self._map_points_scatter.setData(spots=spots)
 
         rpm_data = vehicle_state.get(Signal.RPM)
         ve_data = vehicle_state.get(Signal.VE)
