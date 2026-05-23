@@ -259,6 +259,24 @@ class Signal(enum.Enum):
         },
     }
 
+    VE_LAMBDA = {
+        "name": "VE λ",
+        "calculated": True,
+        "value": lambda x: (
+            int(x[Signal.LAMBDA].raw) + int(x[Signal.FUEL_TRIM].raw) - int(x[Signal.LAMBDA_TARGET].raw)
+        ) * int(x[Signal.VE].raw) / 10000,
+        "for_label": lambda x: f'{x:.2f}',
+        "unit": "",
+        "min": 0,
+        "max": 200,
+        "color": "cyan",
+        "alarm": {
+            "enabled": False,
+            "min": None,
+            "max": None,
+        },
+    }
+
     POWER = {
         "name": "Power",
         "calculated": True,

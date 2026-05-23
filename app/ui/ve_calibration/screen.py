@@ -335,12 +335,17 @@ class VeCalibrationScreen(Screen):
         scatter_signal = pg.ScatterPlotItem(size=12, pen=pg.mkPen("white", width=2), brush=pg.mkBrush("lime"))
         plot_widget.addItem(scatter_signal)
 
+        # Scatter: VE_LAMBDA prediction — only visible in ClosedLoop (cyan)
+        scatter_ve_lambda = pg.ScatterPlotItem(size=12, pen=pg.mkPen("white", width=2), brush=pg.mkBrush("cyan"))
+        plot_widget.addItem(scatter_ve_lambda)
+
         layout.addWidget(plot_widget, stretch=1)
 
         self.graph_placeholder = header
         self._ve_lines = ve_lines
         self._map_points_scatter = map_points_scatter
         self._ve_signal_scatter = scatter_signal
+        self._ve_lambda_scatter = scatter_ve_lambda
         self._heatmap_plot = plot_widget
 
         return container
@@ -555,6 +560,14 @@ class VeCalibrationScreen(Screen):
             self._ve_signal_scatter.setData([rpm_data.value], [ve_data.value])
         else:
             self._ve_signal_scatter.setData([], [])
+
+        ve_lambda_data = vehicle_state.get(Signal.VE_LAMBDA)
+        lambda_loop = vehicle_state.get(Signal.LAMBDA_LOOP)
+        if (rpm_data is not None and ve_lambda_data is not None
+                and lambda_loop is not None and lambda_loop.value in (1, 2)):
+            self._ve_lambda_scatter.setData([rpm_data.value], [ve_lambda_data.value])
+        else:
+            self._ve_lambda_scatter.setData([], [])
 
     # ── Timer-driven live updates ─────────────────────────────────────────────
 
