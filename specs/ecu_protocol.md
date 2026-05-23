@@ -2,7 +2,7 @@
 
 Describes the Bluetooth serial communication protocol between the dashboard and the Master Injection ECU.
 
-Implementation: `app/ecu_connection/ecu_connection.py`, `app/master/ecu.py`.
+Implementation: `app/ecu_connection/serial.py`, `app/masterinjection/protocol.py`.
 
 ---
 
@@ -11,7 +11,7 @@ Implementation: `app/ecu_connection/ecu_connection.py`, `app/master/ecu.py`.
 | Parameter | Value |
 |---|---|
 | Interface | Bluetooth serial (Windows COM port) |
-| Default port | `COM1` (configured in `main.py`) |
+| Default port | `COM1` (configured in `config.json` under `connection.port`) |
 | Baud rate | 115200 |
 | Timeout | 1 s (read and write) |
 | Encoding | UTF-8 |

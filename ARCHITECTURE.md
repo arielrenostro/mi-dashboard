@@ -1,6 +1,6 @@
 # Architecture — MI Dashboard
 
-Real-time automotive ECU telemetry dashboard for the Master Injection ECU. Reads data over Bluetooth serial (Windows COM port), parses semicolon-delimited frames, displays live values and graphs, plays audio alarms, logs to CSV, and supports keyboard-triggered events.
+Real-time automotive ECU telemetry dashboard for the Master Injection ECU. Reads data over Bluetooth serial (Windows COM port), parses semicolon-delimited frames, displays live values and graphs, plays audio alarms, logs to CSV, and supports multi-screen keyboard navigation and VE map calibration.
 
 ## Stack
 
@@ -11,60 +11,69 @@ Real-time automotive ECU telemetry dashboard for the Master Injection ECU. Reads
 
 ## Entry point
 
-`main.py` — instantiates all components, wires signals/slots, and starts the Qt event loop. Configuration constants (`PORT`, `BAUDRATE`, `LOG_FILE`, `MOCK_FILE`, etc.) live here.
+`main.py` — instantiates components, wires signals/slots, and starts the Qt event loop. The CSV log path is hardcoded here; all other settings are loaded from `config.json` via `app/config.py`.
 
 ## Module map
 
 ```
 app/
-├── ecu_connection/       # Serial I/O (real and mock)
-├── master/               # Domain models: signals, ECU protocol
-├── vehicle/              # Global shared state
-├── dashboard/            # Qt UI
+├── ecu_connection/       # Serial I/O (abstract base + serial + mock + thread)
+├── masterinjection/      # Domain models: signals, ECU protocol
+├── state/                # Global shared state + processors
+│   └── processors/       # Signal-driven state processors (e.g. lambda loop)
 ├── alarm/                # Limit alarm engine
 ├── event/                # Keyboard-triggered actions
 ├── log_writer/           # CSV logging
+├── ui/                   # Qt UI
+│   ├── base/             # Screen base class
+│   ├── components/       # Reusable widgets
+│   ├── dashboard/        # Live telemetry screen
+│   ├── home/             # Home/menu screen
+│   └── ve_calibration/   # VE map calibration screen + state + write controller
+├── config.py             # config.json loader
 └── logger.py             # Logging setup
 ```
 
 ## Data flow
 
 ```
-EcuConnection / EcuConnectionMock  (QThread)
+EcuConnectionSerial / EcuConnectionMock
+    │  (via EcuConnectionThread : QThread)
     │  emitter(str)  —  "#D01;...;#D02;..."
     ├──► SignalProcessor.process_line()
-    │         │  emitter(dict)  —  {Signal: {value, value_str, raw, signal}}
-    │         ├──► Dashboard.process_signals()              UI refresh
-    │         ├──► AlarmProcessor.process_signals()          limit check
-    │         ├──► VehicleState.update()                    shared state
-    │         └──► LambdaLoopStateProcessor.process_signals() loop state
-    └──► LogWriter.write()                                  CSV append
+    │         │  emitter(dict)  —  {Signal: ParsedSignal}
+    │         ├──► DashboardScreen.on_signal_received()        UI refresh
+    │         ├──► AlarmProcessor.process_signals()            limit check
+    │         ├──► VehicleState.update()                       shared state
+    │         ├──► LambdaLoopStateProcessor.on_signal_received() loop state
+    │         └──► VeCalibrationScreen.process_signals()       top bar update
+    └──► LogWriter.write()                                     CSV append
 
-AlarmProcessor.emitter(Signal) ──► Dashboard.fire_field_alarm()    visual flash
+AlarmProcessor.emitter(Signal) ──► [pending] DashboardScreen.fire_field_alarm()
 
-Dashboard.key_event(int) ──► EventMarker.handle_key()
-                         │       ├─ QMediaPlayer.play()
-                         │       └─ event_triggered ──► LogWriter.set_event_pending()
-                         └──► KeyHoldDetector.on_key_pressed()
-Dashboard.key_released(int) ──► KeyHoldDetector.on_key_released()
-                                    └─ (after 2 s hold) triggered ──► LambdaToggle.handle_trigger()
-                                                                           ├─ QMediaPlayer.play()
-                                                                           ├─ command_requested ──► EcuConnection.send_command()
-                                                                           └─ command_requested ──► LambdaLoopStateProcessor.on_command_sent()
+AppWindow.keyPressEvent / keyReleaseEvent ──► current Screen
+    HomeScreen:          ↑/↓ navigate menu, Enter open screen
+    DashboardScreen:     (no key actions active yet)
+    VeCalibrationScreen: ↑/↓ adjust VE, R reset VE, ESC → AppWindow.go_home()
+
+[pending] AppWindow.key_event(int) ──► EventMarker.handle_key()
+                                   └──► KeyHoldDetector.on_key_pressed()
+[pending] AppWindow.key_released(int) ──► KeyHoldDetector.on_key_released()
+              └─ (after 2 s hold) triggered ──► LambdaToggle.handle_trigger()
+                                                    ├─ command_requested ──► EcuConnection.send_command()
+                                                    └─ command_requested ──► LambdaLoopStateProcessor.on_command_received()
 ```
 
-All cross-thread communication goes through `pyqtSignal` / `@Slot`. `QMediaPlayer` calls are dispatched to the main thread via `Qt.ConnectionType.QueuedConnection`.
+All cross-thread communication goes through `pyqtSignal` + `@Slot`. No UI calls from background threads. `QMediaPlayer` is always called from the main thread via `QueuedConnection`.
 
 ## ECU serial protocol
-
-The ECU streams two frame types per cycle:
 
 ```
 #D01;val1;val2;...   — primary sensor data
 #D02;val1;val2;...   — secondary sensor data
 ```
 
-`EcuConnection` waits for one of each, joins them with `;`, and emits the combined string. `SignalProcessor` accesses fields by absolute index across this combined string. Only lines starting with `#D01` are parsed and logged (`LOG_PREFIX` in `app/master/log.py`).
+`EcuConnectionSerial` waits for one of each, joins them with `;`, and emits the combined string. `SignalProcessor` accesses fields by absolute index across this combined string. Only lines starting with `#D01` are parsed and logged.
 
 Handshake sequence: `#D50` (connect) → `#D01` (start streaming).
 
@@ -74,51 +83,60 @@ Handshake sequence: `#D50` (connect) → `#D01` (start streaming).
 
 | File | Class | Role |
 |---|---|---|
-| `ecu_connection.py` | `EcuConnection(QThread)` | Connects to COM port, sends handshake, buffers and emits joined frames. Reconnects after 3 consecutive empty reads. Thread-safe `send_command()` — queued and drained after each complete frame. |
-| `ecu_connection_mock.py` | `EcuConnectionMock(QThread)` | Replays a CSV log file. Emits frames timed by embedded timestamps. `send_command()` is a no-op. |
+| `ecu_connection.py` | `EcuConnection` (ABC) | Abstract base: `send_command()`, `run()`, `start()`, `stop()`, `is_connected()` |
+| `serial.py` | `EcuConnectionSerial` | Connects to COM port, sends handshake, buffers and emits joined frames. Reconnects after 3 consecutive empty reads. Thread-safe `send_command()` via internal `queue.Queue`. |
+| `mock_log.py` | `EcuConnectionMock` | Replays a CSV log file, timed by embedded timestamps. `send_command()` is a no-op. |
+| `thread.py` | `EcuConnectionThread(QThread)` | Wraps any `EcuConnection`, owns the `emitter(str)` pyqtSignal, calls `run()` in a loop. |
+| `__init__.py` | — | Module-level registry: `register_ecu_connection()`, `get_ecu_connection()`, `get_ecu_connection_thread()`. |
 
-### `app/master/`
+### `app/masterinjection/`
 
 | File | Contents |
 |---|---|
-| `signal.py` | `Signal` enum — single source of truth for every ECU signal. Each entry: `index`, `converter` (raw→value), `for_label` (value→display string), `unit`, `min`/`max`, `color`, `alarm`. Signals with `calculated: True` (e.g. `POWER`, `TORQUE`) derive their value via a `value` lambda over already-parsed data. Order in enum matters — calculated signals must follow their dependencies. |
+| `signal.py` | `Signal` enum — single source of truth for every ECU signal. Each entry: `index`, `converter`, `for_label`, `unit`, `min`/`max`, `color`, `alarm`. Signals with `calculated: True` derive their value via a `"value"` lambda over already-parsed data. Order matters — calculated signals must follow their dependencies. |
 | `signal_processor.py` | `SignalProcessor(QObject)` — splits the joined frame on `;`, iterates all `Signal` members, applies converters, builds `parsed_data` dict, emits it. |
-| `ecu.py` | `EcuCommand` / `EcuResponse` enums for the serial protocol. |
-| `log.py` | `LOG_PREFIX = "#D01"` |
+| `protocol.py` | `EcuCommand` / `EcuResponse` enums. Each `EcuCommand` entry has `.cmd` (wire string) and `.description`. |
 
-### `app/vehicle/`
+### `app/state/`
 
 | File | Class | Role |
 |---|---|---|
-| `state.py` | `VehicleState` | Thread-safe store (via `threading.RLock`) for latest signal values, alarm timestamps, and effective lambda loop state. Module-level singleton `vehicle_state` imported everywhere. |
-| `lambda_loop_state_processor.py` | `LambdaLoopStateProcessor(QObject)` | Determines effective lambda loop state, filtering transient open-loop caused by deceleration fuel cut. Rule: "closed" from ECU is always fact; "open" is only accepted when `PEDAL == 0 AND MAP ≤ 20 kPa` is false. |
+| `state.py` | `VehicleState` | Thread-safe store (via `threading.RLock`) for latest signal values, alarm timestamps, effective lambda loop state, RPM/MAP breakpoints, and VE map. Module-level singleton `vehicle_state`. Emits `VehicleStateChangeEvent` on breakpoint/VE map updates. |
+| `processors/lambda_loop_state.py` | `LambdaLoopStateProcessor` | Determines effective lambda loop state, filtering transient open-loop during deceleration fuel cut. Rule: "closed" always fact; "open" only when `PEDAL == 0 AND MAP ≤ 20 kPa`. `on_command_received()` updates state immediately on toggle. |
+| `event.py` | `VehicleStateChangeEvent` | Typed event (`EventType` enum) emitted by `VehicleState` for breakpoint and VE map changes. |
 
-### `app/dashboard/`
+### `app/ui/`
 
-| File | Contents |
-|---|---|
-| `dashboard.py` | `Dashboard(QWidget)` — full-screen Qt UI. Emits `key_event(int)` on press and `key_released(int)` on release. Graph data in `deque(maxlen=graph_x_size)`, refreshed every 100 ms via `QTimer`. |
-| `grid.py` | `GRID` (2-D list of Signals for the numeric grid) and `GRAPH` (list of rows, each a list of Signals sharing one plot). |
+| File | Class | Role |
+|---|---|---|
+| `window.py` | `AppWindow(QWidget)` | Full-screen window with `QStackedWidget`. Self-registers all screens. Routes key events to the active screen. `show_screen(name)` calls lifecycle hooks. `ESC` always calls `go_home()`. |
+| `base/screen.py` | `Screen(QWidget)` | Base class. Lifecycle: `on_activated()`, `on_deactivated()` (no-ops by default). |
+| `home/screen.py` | `HomeScreen` | Vertical menu. `↑`/`↓` navigation, `Enter` to select. Emits `screen_requested(str)`. |
+| `dashboard/screen.py` | `DashboardScreen` | Numeric grid + multi-plot graphs. Layout from `config.json`. Graph buffers in `deque`, refreshed every 100 ms via `QTimer`. |
+| `ve_calibration/screen.py` | `VeCalibrationScreen` | Top-bar signals, 16×16 VE table, pyqtgraph heatmap. `↑`/`↓` edits VE; `R` resets. Emits `ve_adjustment_made`. |
+| `ve_calibration/ve_map_state.py` | `VeMapState` | In-memory 16×16 VE map. Bilinear interpolation weights, `adjust_ve()`, `reset()`, `modified_cells` tracking. Singleton `ve_map_state`. |
+| `ve_calibration/ve_write_controller.py` | `VeWriteController` | 1-second debounce on `ve_adjustment_made`; sends `WRITE_ON_MEMORY` and plays a beep. |
+| `components/signal_card.py` | `SignalCard` | Reusable labeled numeric value widget. |
 
 ### `app/alarm/`
 
 | File | Class | Role |
 |---|---|---|
-| `processor.py` | `AlarmProcessor(QThread)` | Polls `vehicle_state.is_any_alarm_firing()` every 100 ms. Dispatches play/stop to `QMediaPlayer` via `QueuedConnection`. Emits `Signal` to dashboard when a new alarm fires. |
+| `processor.py` | `AlarmProcessor(QThread)` | Polls `vehicle_state.is_any_alarm_firing()` every 100 ms. Dispatches play/stop to `QMediaPlayer` via `QueuedConnection`. Emits `Signal` when a new alarm fires (pending dashboard connection). |
 
 ### `app/event/`
 
 | File | Class | Role |
 |---|---|---|
-| `marker.py` | `EventMarker(QObject)` | Filters `Key_Return`/`Key_Enter` from `key_event`, plays a one-shot beep, emits `event_triggered` to `LogWriter`. |
-| `key_hold_detector.py` | `KeyHoldDetector(QObject)` | Generic hold detector. Configured with a target key and hold duration (ms). Emits `triggered` after the key is held. Auto-repeat safe. |
-| `lambda_toggle.py` | `LambdaToggle(QObject)` | Reads current lambda loop state, plays a sound, emits `command_requested(EcuCommand)` with the appropriate toggle command. |
+| `marker.py` | `EventMarker(QObject)` | Filters `Key_Return`/`Key_Enter`, plays a one-shot beep, emits `event_triggered` to `LogWriter`. *(pending wiring)* |
+| `key_hold_detector.py` | `KeyHoldDetector(QObject)` | Generic hold detector. Emits `triggered` after key held for configured ms. Auto-repeat safe. *(pending wiring)* |
+| `lambda_toggle.py` | `LambdaToggle(QObject)` | Reads lambda loop state, plays sound, emits `command_requested(EcuCommand)`. *(pending wiring)* |
 
 ### `app/log_writer/`
 
 | File | Class | Role |
 |---|---|---|
-| `log_writer.py` | `LogWriter(QObject)` | Owns a `Worker(QObject)` moved to a dedicated `QThread`. CSV columns: `Timestamp; Event; <ECU fields…>`. `set_event_pending()` marks the next written row with `"MARK"`. |
+| `log_writer.py` | `LogWriter(QObject)` | Owns a `Worker` moved to a dedicated `QThread`. CSV: `Timestamp; Event; <ECU fields…>`. `set_event_pending()` marks the next row with `"MARK"`. |
 
 ## Signals (ECU telemetry fields)
 
@@ -149,21 +167,21 @@ Handshake sequence: `#D50` (connect) → `#D01` (start streaming).
 
 | Thread | Owner | Responsibility |
 |---|---|---|
-| Main (Qt event loop) | `QApplication` | UI rendering, slot dispatch |
-| ECU reader | `EcuConnection` / `EcuConnectionMock` | Blocking serial read / CSV replay |
-| Alarm poller | `AlarmProcessor` | 100 ms polling loop |
-| Log writer | `LogWriter` internal `QThread` | Disk I/O |
+| Main (Qt event loop) | `QApplication` | UI rendering, slot dispatch, `QMediaPlayer` |
+| ECU reader | `EcuConnectionThread` | Blocking serial I/O or CSV replay |
+| Alarm poller | `AlarmProcessor` | 100 ms polling loop for audio control |
+| Log writer | `LogWriter` internal `QThread` | Disk I/O (CSV append) |
 
-Inter-thread communication: only via `pyqtSignal` + `@Slot`. No shared mutable state except `VehicleState`, which is protected by `threading.RLock`.
+Inter-thread communication: only via `pyqtSignal` + `@Slot`. The only shared mutable state is `VehicleState`, protected by `threading.RLock`. `EcuConnection.send_command()` is thread-safe via `queue.Queue`.
 
 ## Extending the project
 
-**Add a new signal:** add an entry to `Signal` in `app/master/signal.py`, then add it to `GRID` and/or `GRAPH` in `app/dashboard/grid.py`.
+**Add a new signal:** add an entry to `Signal` in `app/masterinjection/signal.py`, then add it to the grid/graph lists in `config.json`.
 
 **Add a calculated signal:** set `"calculated": True`, provide a `"value"` lambda over `parsed_data`, and place it after all its dependencies in the enum.
 
-**Add an instant keyboard action:** connect a new `QObject` to `Dashboard.key_event(int)` and filter by key code.
+**Add an instant keyboard action on a specific screen:** override `keyPressEvent` in the target `Screen` subclass.
 
-**Add a hold keyboard action:** create `KeyHoldDetector(key, hold_ms)`, connect `key_event` → `on_key_pressed` and `key_released` → `on_key_released`, then connect `triggered` to your handler. Wire everything in `main.py`.
+**Add a hold keyboard action:** create `KeyHoldDetector(key, hold_ms)`, connect `AppWindow.key_event` → `on_key_pressed` and `AppWindow.key_released` → `on_key_released`, connect `triggered` to your handler. Wire in `main.py`.
 
-**Send a command to the ECU:** call `ecu_connection.send_command(cmd: EcuCommand)` from any thread. Add new commands to `EcuCommand` in `app/master/ecu.py`.
+**Send a command to the ECU:** call `get_ecu_connection().send_command(cmd: EcuCommand)` from any thread. Add new commands to `EcuCommand` in `app/masterinjection/protocol.py`.

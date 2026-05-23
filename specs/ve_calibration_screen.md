@@ -2,7 +2,7 @@
 
 Describes the real-time VE map calibration screen: layout, live data display, interpolation highlighting, and keyboard editing.
 
-Implementation: `app/ve_calibration/ve_calibration_screen.py`.
+Implementation: `app/ui/ve_calibration/screen.py`.
 Data model: see `ve_map_model.md`.
 Write protocol: see `ve_write.md`.
 
