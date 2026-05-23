@@ -2,7 +2,7 @@
 
 Describes the deferred ECU write behaviour: debounce timing, command dispatch, and audio feedback.
 
-Implementation: `app/ve_calibration/ve_write_controller.py`, wired in `main.py`.
+Implementation: `app/ui/ve_calibration/ve_write_controller.py`, instantiated inside `VeCalibrationScreen`.
 
 ---
 

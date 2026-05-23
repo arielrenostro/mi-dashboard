@@ -2,7 +2,7 @@
 
 Describes the full data flow from ECU to display, storage, and commands.
 
-Implementation: `main.py` (wiring), `app/` (all modules).
+Implementation: `main.py` (top-level wiring), `app/ui/window.py` (screen wiring), `app/` (all modules).
 
 ---
 
@@ -117,19 +117,25 @@ When a toggle command is sent by the user, `LambdaLoopStateProcessor.on_command_
 ```
 1.  setup_logging()
 2.  QApplication created
-3.  AppWindow created (full-screen, QStackedWidget)
-4.  Dashboard, VeCalibrationScreen, HomeScreen instantiated
-5.  VeCalibrationScreen populated with default VE map axes
-6.  Screens registered: "home", "dashboard", "ve_calibration"
-7.  HomeScreen.screen_requested connected to AppWindow.show_screen
-8.  LogWriter, AlarmProcessor instantiated and connected
-9.  EcuConnection or EcuConnectionMock chosen based on MOCK_FILE
-10. LambdaLoopStateProcessor, LambdaToggle, KeyHoldDetector, EventMarker instantiated and connected
-11. VeWriteController instantiated and connected to VeCalibrationScreen + EcuConnection
-12. SignalProcessor instantiated and connected to all consumers (Dashboard, AlarmProcessor, VehicleState, LambdaLoopStateProcessor, VeCalibrationScreen)
-13. EcuConnection.emitter connected to SignalProcessor and LogWriter
-14. AlarmProcessor.start(), EcuConnection.start()
-15. AppWindow.show()  ← displays HomeScreen
-16. app.exec()  ← Qt event loop runs until window is closed
-17. app_window.close(), alarm_processor.stop(), ecu_connection.stop()
+3.  LogWriter instantiated
+4.  AlarmProcessor instantiated; alarm_processor.start()
+5.  SignalProcessor instantiated; emitter connected to AlarmProcessor and VehicleState
+6.  EcuConnectionSerial or EcuConnectionMock chosen based on config.connection.mock;
+    registered via register_ecu_connection()
+7.  AppWindow created (full-screen, QStackedWidget)
+    └── _register_screens():
+        a. HomeScreen instantiated; screen_requested connected to AppWindow.show_screen
+        b. VeCalibrationScreen instantiated (owns VeWriteController internally)
+        c. DashboardScreen instantiated; SignalProcessor.emitter connected to on_signal_received
+        d. Screens added to QStackedWidget; show_screen("home") called
+8.  EcuConnection.emitter connected to SignalProcessor.process_line and LogWriter.write
+9.  EcuConnectionThread.start()
+10. app.exec()  ← Qt event loop runs until window is closed
+11. app_window.close(), alarm_processor.stop(), ecu_connection_thread.stop()
+
+[pending — not yet wired]:
+    LambdaLoopStateProcessor connected to SignalProcessor.emitter
+    LambdaToggle + KeyHoldDetector instantiated and connected to AppWindow key events
+    EventMarker instantiated and connected to AppWindow key event + LogWriter
+    ECU startup commands: RPM_BREAKPOINTS, MAP_BREAKPOINTS, VE rows 0–15
 ```

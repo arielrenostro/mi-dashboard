@@ -2,7 +2,7 @@
 
 Describes the multi-screen architecture: the main window, the screen base class, the home screen, and navigation rules.
 
-Implementation: `app/screen/app_window.py`, `app/screen/screen.py`, `app/screen/home_screen.py`, wired in `main.py`.
+Implementation: `app/ui/window.py`, `app/ui/base/screen.py`, `app/ui/home/screen.py`. Screens are self-registered inside `AppWindow._register_screens()` — no explicit wiring in `main.py` is required.
 
 ---
 
@@ -14,7 +14,7 @@ The application uses a single full-screen `AppWindow` that contains a `QStackedW
 
 ## AppWindow
 
-**Class:** `AppWindow` (`app/screen/app_window.py`)
+**Class:** `AppWindow` (`app/ui/window.py`)
 
 | Property | Value |
 |---|---|
@@ -25,25 +25,21 @@ The application uses a single full-screen `AppWindow` that contains a `QStackedW
 
 ### Registration
 
-Screens are registered by name before the event loop starts:
+Screens are registered internally in `AppWindow._register_screens()` — no manual wiring in `main.py` is needed:
 
 ```python
-app_window.register_screen("home", home_screen)
-app_window.register_screen("dashboard", dashboard)
-app_window.register_screen("ve_calibration", ve_calibration_screen)
-app_window.show_screen("home")
+# inside AppWindow._register_screens()
+self._register_screen("home", HomeScreen(...))
+self._register_screen("dashboard", DashboardScreen(...))
+self._register_screen("ve_calibration", VeCalibrationScreen(...))
+self.show_screen("home")
 ```
 
 ### Key event handling
 
-| Key | Action |
-|---|---|
-| `ESC` | Call `go_home()` — no signal emitted |
-| Any other key | Emit `key_event(int)` |
+`AppWindow` overrides `keyPressEvent` and `keyReleaseEvent` and forwards them directly to the currently active screen via `self._screens[self._current_screen_name].keyPressEvent(event)`. Individual screens handle their own keys.
 
-Key release: always emit `key_released(int)` regardless of key.
-
-**Intent:** `ESC` is intercepted at the window level so individual screens never need to handle it. All other keys are broadcast via signals so any registered handler can filter them independently.
+**Intent:** each screen encapsulates its own key handling, keeping `AppWindow` as a thin router. `ESC` and home navigation are handled inside each screen's `keyPressEvent` by calling `self._close_fn()`, which is wired to `app_window.show_screen("home")` at registration time.
 
 ### Screen transitions
 
@@ -59,7 +55,7 @@ Key release: always emit `key_released(int)` regardless of key.
 
 ## Screen base class
 
-**Class:** `Screen` (`app/screen/screen.py`)
+**Class:** `Screen` (`app/ui/base/screen.py`)
 
 All application screens inherit from `Screen`. Subclasses may override the lifecycle methods:
 
@@ -76,7 +72,7 @@ Default implementations are no-ops.
 
 ## HomeScreen
 
-**Class:** `HomeScreen` (`app/screen/home_screen.py`)
+**Class:** `HomeScreen` (`app/ui/home/screen.py`)
 
 | Property | Value |
 |---|---|

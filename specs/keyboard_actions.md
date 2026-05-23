@@ -2,24 +2,24 @@
 
 All keyboard-triggered actions in the dashboard.
 
-Implementation: `app/event/`, wired in `main.py`.
+Implementation: `app/event/`, `app/ui/*/screen.py`.
 
 ---
 
 ## Action table
 
-Actions marked **Global** are active on every screen. Actions marked with a screen name are only active on that screen.
+Actions marked **Global** are active on every screen. Actions marked with a screen name are only active on that screen. Actions marked **pending** have complete implementations but are not yet wired in the current build.
 
-| Action | Key | Scope | Trigger type | Hold duration | Sound | Effect |
-|---|---|---|---|---|---|---|
-| Event marker | `Return` / `Enter` | Global | Instant (press) | — | `alarm.wav` (one-shot) | Marks next CSV row with `"MARK"` |
-| Lambda loop toggle | `Space` | Global | Hold | 2000 ms | `alarm.wav` (one-shot) | Sends `LAMBDA_LOOP_OPEN` or `LAMBDA_LOOP_CLOSE` to ECU |
-| Return to home | `ESC` | Global | Instant (press) | — | — | Navigates to HomeScreen |
-| Home menu navigate | `↑` / `↓` | HomeScreen | Instant (press) | — | — | Moves menu selection up/down |
-| Home menu confirm | `Enter` | HomeScreen | Instant (press) | — | — | Opens selected screen |
-| VE increase | `↑` | VE Calibration | Instant (press) | — | — | `adjust_ve(rpm, map, +6.0)` |
-| VE decrease | `↓` | VE Calibration | Instant (press) | — | — | `adjust_ve(rpm, map, -6.0)` |
-| VE reset | `R` | VE Calibration | Instant (press) | — | — | Restores all VE cells to original values |
+| Action | Key | Scope | Trigger type | Hold duration | Sound | Effect | Status |
+|---|---|---|---|---|---|---|---|
+| Event marker | `Return` / `Enter` | Global | Instant (press) | — | `alarm.wav` (one-shot) | Marks next CSV row with `"MARK"` | **pending** |
+| Lambda loop toggle | `Space` | Global | Hold | 2000 ms | `alarm.wav` (one-shot) | Sends `LAMBDA_LOOP_OPEN` or `LAMBDA_LOOP_CLOSE` to ECU | **pending** |
+| Return to home | `ESC` | Global | Instant (press) | — | — | Navigates to HomeScreen | Active |
+| Home menu navigate | `↑` / `↓` | HomeScreen | Instant (press) | — | — | Moves menu selection up/down | Active |
+| Home menu confirm | `Enter` | HomeScreen | Instant (press) | — | — | Opens selected screen | Active |
+| VE increase | `↑` | VE Calibration | Instant (press) | — | — | `adjust_ve(rpm, map, +6.0)` | Active |
+| VE decrease | `↓` | VE Calibration | Instant (press) | — | — | `adjust_ve(rpm, map, -6.0)` | Active |
+| VE reset | `R` | VE Calibration | Instant (press) | — | — | Restores all VE cells to original values | Active |
 
 ---
 

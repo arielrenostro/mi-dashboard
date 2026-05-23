@@ -2,7 +2,7 @@
 
 Describes the in-memory representation of the 16×16 VE fuel map, the bilinear interpolation algorithm, and the editing/reset API.
 
-Implementation: `app/ve_calibration/ve_map_state.py`.
+Implementation: `app/ui/ve_calibration/ve_map_state.py`.
 
 ---
 
@@ -12,7 +12,7 @@ The ECU uses a 16×16 lookup table (VE map) indexed by RPM (columns) and MAP pre
 
 `VeMapState` mirrors this table in memory, exposes methods to read and edit cells, and computes the same interpolation weights so the UI can accurately reflect which cells the ECU is currently using.
 
-Module-level singleton: `ve_map_state = VeMapState()` (imported as `from app.ve_calibration.ve_map_state import ve_map_state`).
+Module-level singleton: `ve_map_state = VeMapState()` (imported as `from app.ui.ve_calibration.ve_map_state import ve_map_state`).
 
 ---
 

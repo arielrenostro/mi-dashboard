@@ -53,28 +53,62 @@ Press **Esc** or close the window to exit.
 
 ## Configuration
 
-All settings are at the top of `main.py`:
+Settings are loaded from `config.json` in the project root. If the file is absent, defaults apply.
 
-| Variable       | Description                                                                           |
-|----------------|---------------------------------------------------------------------------------------|
-| `PORT`         | Windows COM port (`"COM5"`, etc.)                                                     |
-| `BAUDRATE`     | Serial baud rate (default `115200`)                                                   |
-| `LOG_FILE`     | Output CSV file path                                                                  |
-| `ALARM_SOUND`  | `.wav` file played during limit alarms                                                |
-| `EVENT_SOUND`  | `.wav` file played when Enter is pressed                                              |
-| `MOCK_FILE`    | Path to a recorded CSV for playback without hardware; set to `""` to use real serial |
+```json
+{
+  "connection": {
+    "port": "COM1",
+    "baudrate": 115200,
+    "mock": ""
+  },
+  "alarm": {
+    "sound": "alarm.wav"
+  },
+  "dashboard": {
+    "grid": [["RPM", "VSS", "MAP", "BOOST", "CLT", "IAT", "POWER"],
+             ["LAMBDA", "LAMBDA_TARGET", "FUEL_TRIM", "BOOST_TARGET", "INJ_UTIL", "IGN", "TORQUE"]],
+    "graph": [["RPM", "MAP"], ["LAMBDA", "LAMBDA_TARGET", "FUEL_TRIM"]],
+    "graph_x_size": 150
+  },
+  "ve_calibration": {
+    "ve_sound": "alarm.wav",
+    "closed_sound": "alarm.wav",
+    "open_sound": "alarm.wav"
+  }
+}
+```
 
-Signal definitions (name, ECU index, unit, limits, graph color, alarm thresholds) are hardcoded in `app/master/signal.py`. Dashboard layout is in `app/dashboard/grid.py`.
+| Key | Description |
+|-----|-------------|
+| `connection.port` | Windows COM port (`"COM5"`, etc.) |
+| `connection.baudrate` | Serial baud rate |
+| `connection.mock` | Path to a recorded CSV for playback without hardware; `""` to use real serial |
+| `alarm.sound` | `.wav` file played during limit alarms |
+| `dashboard.grid` | 2-D list of signal names for the numeric display grid |
+| `dashboard.graph` | List of row groups (each group shares one plot) |
+| `dashboard.graph_x_size` | Number of samples kept in each graph buffer |
+| `ve_calibration.*_sound` | `.wav` files for VE edit, loop-close, and loop-open events |
+
+The CSV log path (`LOG_FILE`) is still hardcoded at the top of `main.py`.
+
+Signal definitions (name, ECU index, unit, limits, graph color, alarm thresholds) are in `app/masterinjection/signal.py`.
 
 ---
 
 ## Keyboard shortcuts
 
-| Key | Action |
-|-----|--------|
-| **Enter** | Beep + stamp `MARK` on the next CSV row |
-| **Space** (hold 2 s) | Toggle lambda loop open ↔ closed |
-| **Esc** | Exit the application |
+| Key | Screen | Action | Status |
+|-----|--------|--------|--------|
+| **Esc** | Any | Return to home screen (or exit from home) | Active |
+| **↑ / ↓** | Home | Navigate menu | Active |
+| **Enter** | Home | Open selected screen | Active |
+| **↑ / ↓** | VE Calibration | Adjust VE ±6 at current operating point | Active |
+| **R** | VE Calibration | Reset all VE cells to original values | Active |
+| **Enter** | Any | Beep + stamp `MARK` on the next CSV row | Pending |
+| **Space** (hold 2 s) | Any | Toggle lambda loop open ↔ closed | Pending |
+
+> **Note:** Some keyboard actions are not yet wired in the current build. See the "Pending features" section below.
 
 ---
 
@@ -147,6 +181,19 @@ The combined `#D01;...;#D02;...` frame contains 34 fields (index 0–33). Fields
 | 31    | dACC %            | `5000`  | —                     | Delta accelerator (raw)                         |
 | 32    | *(reserved)*      | `0`     | —                     |                                                 |
 | 33    | *(Gear)*          | `1`     | **1**                 | Current gear (header label `0` is a firmware artifact) |
+
+---
+
+## Pending features
+
+The following features have working implementations but are not yet wired in `main.py` (they are commented out with `# TODO` markers):
+
+- **Visual alarm flash** — `AlarmProcessor` can emit a signal to flash a specific card on the dashboard when a limit is crossed; the connection is not yet established.
+- **Event marker (Enter key)** — `EventMarker` beeps and stamps `MARK` in the CSV; the key connection is not yet active.
+- **Lambda loop toggle (Space hold)** — `LambdaToggle` + `KeyHoldDetector` exist and are complete; the hold-detector is not yet connected to the window key events.
+- **ECU startup sync** — sending `RPM_BREAKPOINTS`, `MAP_BREAKPOINTS`, and all 16 VE rows on connect to pre-populate the live VE map; the commands are commented out.
+
+---
 
 Two signals are **calculated** by the app and not present in the raw stream:
 
