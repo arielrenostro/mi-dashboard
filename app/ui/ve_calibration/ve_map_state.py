@@ -86,6 +86,8 @@ class VeMapState:
             for col in range(16):
                 self.ve_map[row][col] = self.original_ve_map[row][col]
         self.modified_cells.clear()
+        for i in range(16):
+            self.modified_cells.add((i, 0))
 
     # ── Visual state ──────────────────────────────────────────────────────────
 

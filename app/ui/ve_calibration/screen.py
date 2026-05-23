@@ -1,7 +1,8 @@
 from collections.abc import Callable
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QUrl
 from PyQt6.QtGui import QFont, QColor, QKeyEvent
+from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
@@ -16,12 +17,16 @@ from PyQt6.QtWidgets import (
 )
 from pyqtgraph.Qt.QtCore import Slot
 
+from app.config import config
+from app.ecu_connection import get_ecu_connection
+from app.masterinjection.protocol import EcuCommand
 from app.masterinjection.signal import Signal
 from app.state.event import VehicleStateChangeEvent, EventType
 from app.state.state import vehicle_state
 from app.ui.base.screen import Screen
 from app.ui.components.signal_card import SignalCard
 from app.ui.ve_calibration.ve_map_state import ve_map_state
+from app.ui.ve_calibration.ve_write_controller import VeWriteController
 
 # Signals shown in the top bar, in order
 _TOP_BAR_SIGNALS = [
@@ -50,11 +55,11 @@ def _interpolate_color(weight: float) -> str:
 
 
 _HEATMAP_STOPS = [
-    (0.00, (0,   0,   100)),
-    (0.25, (0,   110, 140)),
-    (0.50, (0,   130, 0  )),
-    (0.75, (140, 140, 0  )),
-    (1.00, (160, 20,  0  )),
+    (0.00, (0, 0, 100)),
+    (0.25, (0, 110, 140)),
+    (0.50, (0, 130, 0)),
+    (0.75, (140, 140, 0)),
+    (1.00, (160, 20, 0)),
 ]
 
 
@@ -110,13 +115,34 @@ class VeCalibrationScreen(Screen):
 
         vehicle_state.emitter.connect(self._on_vehicle_state_event)
 
+        self._writer = VeWriteController(config.ve_calibration.ve_sound)
+        self.ve_adjustment_made.connect(self._writer.on_adjustment_made)
+
+        self._audio_closed = QAudioOutput()
+        self._audio_closed.setVolume(1.0)
+        self._player_closed = QMediaPlayer()
+        self._player_closed.setAudioOutput(self._audio_closed)
+        self._player_closed.setSource(QUrl.fromLocalFile(config.ve_calibration.closed_sound))
+
+        self._audio_open = QAudioOutput()
+        self._audio_open.setVolume(1.0)
+        self._player_open = QMediaPlayer()
+        self._player_open.setAudioOutput(self._audio_open)
+        self._player_open.setSource(QUrl.fromLocalFile(config.ve_calibration.open_sound))
+
     def keyPressEvent(self, event: QKeyEvent):
         if event.key() == Qt.Key.Key_Escape:
             self.close_fn()
         elif event.key() == Qt.Key.Key_Up:
-            self._adjust_ve(+6.0)
+            self._adjust_ve(+5.0)
         elif event.key() == Qt.Key.Key_Down:
-            self._adjust_ve(-6.0)
+            self._adjust_ve(-5.0)
+        elif event.key() == Qt.Key.Key_O:
+            get_ecu_connection().send_command(EcuCommand.LAMBDA_LOOP_OPEN)
+            self._player_open.play()
+        elif event.key() == Qt.Key.Key_P:
+            get_ecu_connection().send_command(EcuCommand.LAMBDA_LOOP_CLOSE)
+            self._player_closed.play()
         elif event.key() == Qt.Key.Key_R:
             ve_map_state.reset()
             self.ve_adjustment_made.emit()
@@ -330,7 +356,7 @@ class VeCalibrationScreen(Screen):
         hint_font = QFont("Arial", 12)
 
         hint = QLabel(
-            "↑ +6 VE   ↓ -6 VE   Espaço Loop Open/Closed   R Resetar   ESC Voltar"
+            "↑ +5 VE   ↓ -5 VE   O Open Loop   P Close Loop   R Resetar   ESC Voltar"
         )
         hint.setFont(hint_font)
         hint.setStyleSheet("color: #888888;")

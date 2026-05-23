@@ -4,6 +4,7 @@ from PyQt6.QtCore import QObject, pyqtSignal, QTimer, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from pyqtgraph.Qt.QtCore import Slot
 
+from app.ecu_connection import get_ecu_connection
 from app.masterinjection.protocol import EcuCommand
 from app.ui.ve_calibration.ve_map_state import ve_map_state
 
@@ -52,10 +53,10 @@ class VeWriteController(QObject):
 
         for row in pending:
             values = ve_map_state.get_row_raw_values(row)
-            cmd = EcuCommand.ve_row(row) # TODO ARIEL
+            cmd = EcuCommand[f"VE_ROW_{row + 1}"]
             logger.debug("Enviando %s: %s", cmd.cmd, values)
             ve_map_state.mark_row_sent(row)   # remove da fila ANTES de emitir
-            self.command_requested.emit(cmd, values)
+            get_ecu_connection().send_command(cmd, values)
 
         self._player.stop()
         self._player.play()

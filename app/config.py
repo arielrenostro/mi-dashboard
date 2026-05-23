@@ -23,6 +23,14 @@ class AppConfigAlarm:
         self.sound: str = config_dict.get('sound', 'alarm.wav')
 
 
+class AppConfigVeCalibration:
+
+    def __init__(self, config_dict: dict):
+        self.ve_sound: str = config_dict.get('ve_sound', 'alarm.wav')
+        self.closed_sound: str = config_dict.get('closed_sound', 'alarm.wav')
+        self.open_sound: str = config_dict.get('open_sound', 'alarm.wav')
+
+
 class AppConfigConnection:
 
     def __init__(self, config_dict: dict):
@@ -37,6 +45,7 @@ class AppConfig:
         self.dashboard = AppConfigDashboard(config_dict.get('dashboard', {}))
         self.alarm = AppConfigAlarm(config_dict.get('alarm', {}))
         self.connection = AppConfigConnection(config_dict.get('connection', {}))
+        self.ve_calibration = AppConfigVeCalibration(config_dict.get('ve_calibration', {}))
 
 
 def _setup_config():

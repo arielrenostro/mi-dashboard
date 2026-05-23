@@ -18,6 +18,8 @@ class EcuConnectionMock(EcuConnection):
         self.line = 0
 
     def send_command(self, cmd: EcuCommand, args: List[Any] | None = None) -> None:
+        logger.info(f"Sending command: {cmd} {args}")
+
         # TODO: move ecu connection handshake out of EcuConnectionSerial
         if cmd == EcuCommand.MAP_BREAKPOINTS:
             self.emitter.emit('#I21;20;30;40;50;60;70;80;90;100;120;140;160;180;200;220;240')
