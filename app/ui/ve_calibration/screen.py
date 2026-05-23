@@ -278,15 +278,20 @@ class VeCalibrationScreen(Screen):
             plot_widget.addItem(curve)
             ve_lines.append(curve)
 
-        # Scatter for active interpolation point
-        scatter = pg.ScatterPlotItem(size=12, pen=pg.mkPen("white", width=2), brush=pg.mkBrush("red"))
-        plot_widget.addItem(scatter)
+        # Scatter: interpolated VE from table (red)
+        scatter_table = pg.ScatterPlotItem(size=12, pen=pg.mkPen("white", width=2), brush=pg.mkBrush("red"))
+        plot_widget.addItem(scatter_table)
+
+        # Scatter: actual VE signal from ECU (lime)
+        scatter_signal = pg.ScatterPlotItem(size=12, pen=pg.mkPen("white", width=2), brush=pg.mkBrush("lime"))
+        plot_widget.addItem(scatter_signal)
 
         layout.addWidget(plot_widget, stretch=1)
 
         self.graph_placeholder = header
         self._ve_lines = ve_lines
-        self._heatmap_scatter = scatter
+        self._heatmap_scatter = scatter_table
+        self._ve_signal_scatter = scatter_signal
         self._heatmap_plot = plot_widget
 
         return container
@@ -464,6 +469,13 @@ class VeCalibrationScreen(Screen):
             self._heatmap_scatter.setData([cx], [cy])
         else:
             self._heatmap_scatter.setData([], [])
+
+        rpm_data = vehicle_state.get(Signal.RPM)
+        ve_data = vehicle_state.get(Signal.VE)
+        if rpm_data is not None and ve_data is not None:
+            self._ve_signal_scatter.setData([rpm_data.value], [ve_data.value])
+        else:
+            self._ve_signal_scatter.setData([], [])
 
     # ── Timer-driven live updates ─────────────────────────────────────────────
 

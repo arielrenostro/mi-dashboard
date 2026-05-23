@@ -141,11 +141,11 @@ class VeMapState:
     def adjust_ve(self, rpm: float, map_val: float, delta_pct: float):
         """
         Apply a VE% delta distributed by interpolation weights.
-        delta_pct = 6.0 → +6.0% VE = +60 raw ECU units total.
+        delta_pct = 6.0 raw ECU units total.
         Each active cell receives round(delta_pct * 10 * weight) raw units.
         """
         weights = self.calculate_interpolation_weights(rpm, map_val)
-        delta_raw = delta_pct * 10.0
+        delta_raw = delta_pct
         for (row, col), weight in weights.items():
             self.set_cell(row, col, self.get_cell(row, col) + delta_raw * weight)
 
