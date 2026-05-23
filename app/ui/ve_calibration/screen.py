@@ -49,6 +49,29 @@ def _interpolate_color(weight: float) -> str:
     return f"#{r:02X}{g:02X}{b:02X}"
 
 
+_HEATMAP_STOPS = [
+    (0.00, (0,   0,   100)),
+    (0.25, (0,   110, 140)),
+    (0.50, (0,   130, 0  )),
+    (0.75, (140, 140, 0  )),
+    (1.00, (160, 20,  0  )),
+]
+
+
+def _ve_cell_color(ve_value: float, ve_min: float, ve_max: float) -> QColor:
+    """Heatmap color for a VE cell: dark blue (low) → red (high)."""
+    t = 0.5 if ve_max <= ve_min else max(0.0, min(1.0, (ve_value - ve_min) / (ve_max - ve_min)))
+    for i in range(len(_HEATMAP_STOPS) - 1):
+        t0, c0 = _HEATMAP_STOPS[i]
+        t1, c1 = _HEATMAP_STOPS[i + 1]
+        if t <= t1:
+            s = (t - t0) / (t1 - t0)
+            return QColor(int(c0[0] + s * (c1[0] - c0[0])),
+                          int(c0[1] + s * (c1[1] - c0[1])),
+                          int(c0[2] + s * (c1[2] - c0[2])))
+    return QColor(*_HEATMAP_STOPS[-1][1])
+
+
 class VeCalibrationScreen(Screen):
     """VE Calibration screen — 16x16 map viewer with live top-bar telemetry."""
 
@@ -371,6 +394,9 @@ class VeCalibrationScreen(Screen):
         row_header_font = QFont("Arial", 10)
         row_header_font.setBold(True)
 
+        all_ve = [ve_map[r][c] / 10 for r in range(16) for c in range(16)]
+        ve_min, ve_max = min(all_ve), max(all_ve)
+
         # Column headers (RPM values)
         for col_idx, rpm_val in enumerate(rpm_axis):
             self.ve_table.setHorizontalHeaderItem(
@@ -406,7 +432,7 @@ class VeCalibrationScreen(Screen):
                     self.ve_table.setItem(display_row, col_idx, item)
                 item.setText(f"{ve_raw / 10:.1f}")
                 item.setFont(cell_font)
-                item.setBackground(QColor(_DEFAULT_CELL_BG))
+                item.setBackground(_ve_cell_color(ve_raw / 10, ve_min, ve_max))
                 item.setForeground(QColor(_DEFAULT_TEXT_COLOR))
 
     def highlight_interpolation(self, weights: dict):
@@ -414,9 +440,12 @@ class VeCalibrationScreen(Screen):
 
         Args:
             weights: ``{(row, col): float}`` mapping.  weight=1.0 → full
-                     highlight (#FF6600), weight=0.0 → default background.
-                     Cells absent from the dict revert to the default background.
+                     highlight (#FF6600), weight=0.0 → heatmap background.
+                     Cells absent from the dict revert to the heatmap background.
         """
+        all_ve = [ve_map_state.ve_map[r][c] / 10 for r in range(16) for c in range(16)]
+        ve_min, ve_max = min(all_ve), max(all_ve)
+
         for data_row in range(16):
             display_row = 15 - data_row
             for col in range(16):
@@ -427,7 +456,8 @@ class VeCalibrationScreen(Screen):
                 if weight > 0.0:
                     item.setBackground(QColor(_interpolate_color(weight)))
                 else:
-                    item.setBackground(QColor(_DEFAULT_CELL_BG))
+                    ve_val = ve_map_state.ve_map[data_row][col] / 10
+                    item.setBackground(_ve_cell_color(ve_val, ve_min, ve_max))
 
     def mark_modified_cells(self, modified: set):
         """Visually mark cells that have been modified.
