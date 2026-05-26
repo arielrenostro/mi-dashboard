@@ -2,19 +2,20 @@
 
 Describes how limit alarms are detected, tracked, played, and displayed.
 
-Implementation: `app/alarm/processor.py`, `app/vehicle/state.py`, `app/dashboard/dashboard.py`.
+Implementation: `app/alarm/processor.py`, `app/state/state.py`, `app/ui/dashboard/screen.py`.
 
 ---
 
 ## Alarm configuration per signal
 
-Each signal in `signals.md` carries an `alarm` block:
+Each signal in `signal.py` carries an `alarm` block:
 
 | Field | Type | Description |
 |---|---|---|
 | `enabled` | bool | Whether the alarm can fire for this signal |
-| `min` | float \| None | Lower bound (inclusive). `None` = no lower bound |
-| `max` | float \| None | Upper bound (inclusive). `None` = no upper bound |
+| `min` | float \| None | Lower bound. `None` = no lower bound |
+| `max` | float \| None | Upper bound. `None` = no upper bound |
+| `duration_s` | float | How long one alarm event lasts (default 2.0 s) |
 
 An alarm condition exists when `enabled = true` AND (`value < min` OR `value > max`).
 
@@ -23,29 +24,35 @@ An alarm condition exists when `enabled = true` AND (`value < min` OR `value > m
 ## Alarm lifecycle
 
 ```
-SignalProcessor emits parsed_data
+event_bus → SIGNALS_RECEIVED
     │
     ▼
 AlarmProcessor.process_signals(parsed_data)
     │
     ├─ for each signal:
-    │     compute in_alarm (value vs. min/max)
+    │     compute in_alarm (value vs. min/max via _check_in_alarm)
     │     call vehicle_state.set_alarm(signal, in_alarm)
-    │     if in_alarm AND alarm was NOT already firing:
-    │         emit AlarmProcessor.emitter(signal)   ← leading edge only
+    │
+    │     if in_alarm:
+    │         if now >= _alarm_until[signal]:      ← cooldown expired (or first occurrence)
+    │             new_until = now + duration_s
+    │             _alarm_until[signal] = new_until
+    │             event_bus.publish(AlarmFiredEvent(signal, until=new_until))
+    │     else:
+    │         _alarm_until.pop(signal)             ← reset cooldown when alarm clears
     │
     ▼
-vehicle_state stores alarm timestamp (time.time())
-
-    ─ alarm is considered "firing" for 2 seconds from the last set_alarm(True) call ─
+event_bus → ALARM_FIRED
+    └──► DashboardScreen.fire_field_alarm(signal)   (only when dashboard is active)
 
 AlarmProcessor.run() polls vehicle_state.is_any_alarm_firing() every 100 ms
-    │
     ├─ any alarm firing AND not playing → _play_requested.emit()
     └─ no alarm firing AND playing     → _stop_requested.emit()
 ```
 
-**Alarm duration:** 2 seconds (constant `ALARM_DURATION` in `app/vehicle/state.py`). Each new out-of-range frame resets the 2-second window, so the alarm stays active as long as the condition persists.
+**Cooldown rule:** `AlarmFiredEvent` is published at most once per `duration_s` window. If the signal stays in alarm past the `until` timestamp, a new event is published for the next window. If the alarm clears before `until` expires, the cooldown is reset — the next alarm occurrence starts a fresh window immediately.
+
+**`until` field:** subscribers receive the expiry timestamp and can use it to decide how long to show or sound the alarm (e.g. DashboardScreen flashes for as long as `vehicle_state.is_alarm_firing()` returns true).
 
 ---
 
@@ -64,7 +71,7 @@ AlarmProcessor.run() polls vehicle_state.is_any_alarm_firing() every 100 ms
 
 ## Visual behavior
 
-When `AlarmProcessor.emitter` fires for a signal, `Dashboard.fire_field_alarm(signal)` is called on the leading edge of each alarm.
+When `AlarmFiredEvent` fires for a signal, `DashboardScreen.fire_field_alarm(signal)` is called (subscribed in `on_activated()`; unsubscribed when the screen is hidden).
 
 ### Flash pattern
 
@@ -78,7 +85,7 @@ t=200 ms → if alarm still firing: schedule next flash (i+1), else restore
 
 - The flash repeats every 200 ms alternating black/yellow background.
 - When the alarm stops firing, the cell background is restored to black.
-- Normal label color (signal's `color`) is restored by `Dashboard.update_display()` on the next frame where the value is within range.
+- Normal label color is restored by `DashboardScreen.update_display()` on the next frame where the value is within range.
 
 ---
 

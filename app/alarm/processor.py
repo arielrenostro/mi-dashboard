@@ -1,9 +1,12 @@
 import logging
+import time
 from typing import Dict
 
 from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
+from app.event.app_events import AppEventType, AlarmFiredEvent, SignalsReceivedEvent
+from app.event.bus import event_bus
 from app.masterinjection.signal import Signal, ParsedSignal
 from app.state.state import vehicle_state
 
@@ -11,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 class AlarmProcessor(QThread):
-    emitter = pyqtSignal(Signal)
     _play_requested = pyqtSignal()
     _stop_requested = pyqtSignal()
 
@@ -33,7 +35,14 @@ class AlarmProcessor(QThread):
         self._play_requested.connect(self.player.play, Qt.ConnectionType.QueuedConnection)
         self._stop_requested.connect(self.player.stop, Qt.ConnectionType.QueuedConnection)
 
+        self._alarm_until: Dict[Signal, float] = {}
+
+        event_bus.subscribe(AppEventType.SIGNALS_RECEIVED, self._on_signals_received)
+
         self.running = True
+
+    def _on_signals_received(self, event: SignalsReceivedEvent):
+        self.process_signals(event.data)
 
     def run(self):
         is_playing = False
@@ -55,21 +64,33 @@ class AlarmProcessor(QThread):
         self.running = False
 
     def process_signals(self, signals: Dict[Signal, ParsedSignal]):
+        now = time.time()
         for signal, data in signals.items():
             alarm = signal.value["alarm"]
+            duration = alarm.get("duration_s", 2.0)
 
-            in_alarm = False
-            min_ = alarm["min"] if alarm["min"] is None or isinstance(alarm["min"], (int, float)) else alarm["min"](data.value)
-            max_ = alarm["max"] if alarm["max"] is None or isinstance(alarm["max"], (int, float)) else alarm["max"](data.value)
-
-            if min_ is not None and data.value < min_:
-                in_alarm = alarm["enabled"]
-            elif max_ is not None and data.value > max_:
-                in_alarm = alarm["enabled"]
-
-            if in_alarm and not vehicle_state.is_alarm_firing(signal):
-                self.emitter.emit(signal)
+            in_alarm = self._check_in_alarm(alarm, data)
             vehicle_state.set_alarm(signal, in_alarm)
+
+            if in_alarm:
+                until = self._alarm_until.get(signal, 0.0)
+                if now >= until:
+                    new_until = now + duration
+                    self._alarm_until[signal] = new_until
+                    event_bus.publish(AlarmFiredEvent(signal=signal, until=new_until))
+            else:
+                self._alarm_until.pop(signal, None)
+
+    @staticmethod
+    def _check_in_alarm(alarm: dict, data: ParsedSignal) -> bool:
+        min_ = alarm["min"] if alarm["min"] is None or isinstance(alarm["min"], (int, float)) else alarm["min"](data.value)
+        max_ = alarm["max"] if alarm["max"] is None or isinstance(alarm["max"], (int, float)) else alarm["max"](data.value)
+
+        if min_ is not None and data.value < min_:
+            return alarm["enabled"]
+        if max_ is not None and data.value > max_:
+            return alarm["enabled"]
+        return False
 
     def _handle_status(self, status):
         # chamado na main thread (affinity do player) — player.play() é seguro aqui

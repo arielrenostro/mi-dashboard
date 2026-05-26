@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
 )
 from pyqtgraph.Qt.QtCore import Slot
 
+from app.event.app_events import AppEventType
 from app.masterinjection.signal import Signal, ParsedSignal
 from app.state.state import vehicle_state
 from app.ui.base.screen import Screen
@@ -48,9 +49,12 @@ class DashboardScreen(Screen):
 
     def on_activated(self):
         self.timer.start(100)
+        self._subscribe(AppEventType.SIGNALS_RECEIVED, lambda e: self.on_signal_received(e.data))
+        self._subscribe(AppEventType.ALARM_FIRED, lambda e: self.fire_field_alarm(e.signal))
 
     def on_deactivated(self):
         self.timer.stop()
+        super().on_deactivated()
 
     def keyPressEvent(self, event: QKeyEvent):
         if event.key() == Qt.Key.Key_Escape:

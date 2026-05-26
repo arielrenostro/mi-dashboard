@@ -163,14 +163,15 @@ See `keyboard_actions.md` for the full action table. Summary of actions scoped t
 | `Space` (2 s hold) | Toggle lambda loop (global action, handled by `KeyHoldDetector` + `LambdaToggle`) |
 | `ESC` | Return to home (handled by `AppWindow`) |
 
-After each edit, `ve_adjustment_made` signal is emitted to trigger the write debounce timer (see `ve_write.md`).
+After each edit, `self._writer.on_adjustment_made()` is called directly to trigger the write debounce timer (see `ve_write.md`).
 
 ---
 
 ## Signal wiring
 
-| Signal source | Connected to | Effect |
+| Source | Mechanism | Effect |
 |---|---|---|
-| `SignalProcessor.emitter` | `process_signals(dict)` | Update top-bar values |
-| `AppWindow.key_event` | `handle_key(int)` | Handle ↑ / ↓ / R |
-| `ve_calibration_screen.ve_adjustment_made` | `VeWriteController.on_adjustment_made()` | Start debounce timer |
+| `vehicle_state` | 100 ms `QTimer` polling | Update top-bar values |
+| `vehicle_state.emitter` | direct pyqtSignal | Reload breakpoints / VE map rows |
+| Screen `keyPressEvent` | direct call | Handle ↑ / ↓ / R / O / P |
+| `self._adjust_ve()` / `reset` | direct call to `_writer` | Start debounce timer |

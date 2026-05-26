@@ -45,3 +45,7 @@ class SignalProcessor(QObject):
             except Exception:
                 logger.exception("Erro ao processar sinal %s", signal)
         self.emitter.emit(parsed_data)
+
+        from app.event.bus import event_bus
+        from app.event.app_events import SignalsReceivedEvent
+        event_bus.publish(SignalsReceivedEvent(data=parsed_data))

@@ -1,6 +1,6 @@
 from collections.abc import Callable
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QUrl
+from PyQt6.QtCore import Qt, QTimer, QUrl
 from PyQt6.QtGui import QFont, QColor, QKeyEvent
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtWidgets import (
@@ -77,8 +77,6 @@ def _ve_cell_color(ve_value: float, ve_min: float, ve_max: float) -> QColor:
 class VeCalibrationScreen(Screen):
     """VE Calibration screen — 16x16 map viewer with live top-bar telemetry."""
 
-    ve_adjustment_made = pyqtSignal()
-
     def __init__(self, close_fn: Callable):
         super().__init__(close_fn)
 
@@ -113,7 +111,6 @@ class VeCalibrationScreen(Screen):
         vehicle_state.emitter.connect(self._on_vehicle_state_event)
 
         self._writer = VeWriteController(config.ve_calibration.ve_sound)
-        self.ve_adjustment_made.connect(self._writer.on_adjustment_made)
 
         self._audio_closed = QAudioOutput()
         self._audio_closed.setVolume(1.0)
@@ -142,7 +139,7 @@ class VeCalibrationScreen(Screen):
             self._player_closed.play()
         elif event.key() == Qt.Key.Key_R:
             ve_map_state.reset()
-            self.ve_adjustment_made.emit()
+            self._writer.on_adjustment_made()
 
     # ── Construction helpers ─────────────────────────────────────────────────
 
@@ -414,7 +411,7 @@ class VeCalibrationScreen(Screen):
             return
 
         ve_map_state.adjust_ve(rpm_data.value, map_data.value, delta)
-        self.ve_adjustment_made.emit()
+        self._writer.on_adjustment_made()
 
     def populate_ve_table(
             self,
@@ -591,6 +588,7 @@ class VeCalibrationScreen(Screen):
 
     def on_deactivated(self):
         self._highlight_timer.stop()
+        super().on_deactivated()
 
     def _update_highlight(self):
         from app.state.state import vehicle_state

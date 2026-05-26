@@ -1,19 +1,19 @@
 from typing import Callable
 
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QVBoxLayout, QLabel, QWidget, QHBoxLayout
 
 from app.config import config
 from app.ecu_connection import get_ecu_connection
 from app.ecu_connection.ecu_connection import EcuConnectionStatus
+from app.event.app_events import ScreenRequestedEvent
+from app.event.bus import event_bus
 from app.ui.base.screen import Screen
 
 
 class HomeScreen(Screen):
     """Home screen with a keyboard-navigable menu."""
-
-    screen_requested = pyqtSignal(str)
 
     def __init__(self, close_fn: Callable):
         super().__init__(close_fn)
@@ -131,6 +131,7 @@ class HomeScreen(Screen):
 
     def on_deactivated(self):
         self._status_timer.stop()
+        super().on_deactivated()
 
     def _update_selection_ui(self):
         """Update the visual state of menu items based on selection."""
@@ -163,6 +164,6 @@ class HomeScreen(Screen):
             self._update_selection_ui()
         elif event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
             _, screen_name = self._menu_items[self._selected]
-            self.screen_requested.emit(screen_name)
+            event_bus.publish(ScreenRequestedEvent(screen_name=screen_name))
         else:
             super().keyPressEvent(event)

@@ -20,8 +20,8 @@ A real-time telemetry dashboard for the Master Injection ECU. Streams sensor dat
 - **CSV logging** — appends every ECU frame with a millisecond Unix timestamp and an optional event label
 - **Automatic reconnection** — detects dropped Bluetooth connections and reconnects without restarting the app
 - **Mock mode** — replay a previously recorded CSV file instead of connecting to hardware
-- **Manual event marking** *(pending)* — press **Enter** during a session to beep and stamp `MARK` on the next CSV row
-- **Lambda loop toggle via hold** *(pending)* — hold **Space** for 2 seconds to toggle lambda loop from any screen
+- **Manual event marking** — press **Enter** during a session to beep and stamp `MARK` on the next CSV row
+- **Lambda loop toggle via hold** — hold **Space** for 2 seconds to toggle lambda loop from any screen
 
 ---
 
@@ -61,7 +61,6 @@ Press **Esc** or close the window to exit.
 
 Settings are loaded from `config.json` in the project root or defined by env `MI_DASHBOARD_CONFIG_FILE`. If the file is absent, defaults apply.
 
-FOR AI: update json defaults
 ```json
 {
   "connection": {
@@ -96,9 +95,6 @@ FOR AI: update json defaults
 | `dashboard.graph` | List of row groups (each group shares one plot) |
 | `dashboard.graph_x_size` | Number of samples kept in each graph buffer |
 | `ve_calibration.*_sound` | `.wav` files for VE edit, loop-close, and loop-open events |
-
-# FOR AI: Adjust this!
-The CSV log path (`LOG_FILE`) is still hardcoded at the top of `main.py`.
 
 Signal definitions (name, ECU index, unit, limits, graph color, alarm thresholds) are in `app/masterinjection/signal.py`.
 
@@ -139,7 +135,7 @@ Full-screen live telemetry display. Shows all active signals as numeric cards an
 - **Graphs** — one plot per group in `dashboard.graph`. Each plot can show multiple signals on independent Y-axes (right-side), with a shared X-axis. Every signal has its own color defined in `signal.py`. Peak and minimum markers with value labels float over each curve. Graphs refresh every 100 ms.
 
 **Behavior:**
-- Cards turn red when a limit is crossed. A visual flash (alternating black/yellow background) is triggered when an alarm fires (pending full wiring).
+- Cards turn red when a limit is crossed. A visual flash (alternating black/yellow background) is triggered when an alarm fires.
 - Graph buffers keep the last `graph_x_size` samples (default 150). Older data scrolls out of view.
 
 **Keyboard:**
@@ -191,10 +187,8 @@ Live VE (Volumetric Efficiency) map viewer and editor. Allows real-time adjustme
 | **O** | VE Calibration | Open lambda loop | Active |
 | **P** | VE Calibration | Close lambda loop | Active |
 | **R** | VE Calibration | Reset all VE cells to original values | Active |
-| **Enter** | Any | Beep + stamp `MARK` on the next CSV row | Pending |
-| **Space** (hold 2 s) | Any | Toggle lambda loop open ↔ closed | Pending |
-
-> **Note:** Some keyboard actions are not yet wired in the current build. See the "Pending features" section below.
+| **Enter** | Any | Beep + stamp `MARK` on the next CSV row | Active |
+| **Space** (hold 2 s) | Any | Toggle lambda loop open ↔ closed | Active |
 
 ---
 
@@ -272,12 +266,7 @@ The combined `#D01;...;#D02;...` frame contains 34 fields (index 0–33). Fields
 
 ## Pending features
 
-The following features have working implementations but are not yet wired in `main.py` (they are commented out with `# TODO` markers):
-
-- **Visual alarm flash** — `AlarmProcessor` can emit a signal to flash a specific card on the dashboard when a limit is crossed; the connection is not yet established.
-- **Event marker (Enter key)** — `EventMarker` beeps and stamps `MARK` in the CSV; the key connection is not yet active.
-- **Lambda loop toggle (Space hold)** — `LambdaToggle` + `KeyHoldDetector` exist and are complete; the hold-detector is not yet connected to the window key events.
-- **ECU startup sync** — sending `RPM_BREAKPOINTS`, `MAP_BREAKPOINTS`, and all 16 VE rows on connect to pre-populate the live VE map; the commands are commented out.
+- **ECU startup sync** — sending `RPM_BREAKPOINTS`, `MAP_BREAKPOINTS`, and all 16 VE rows on connect to pre-populate the live VE map on startup.
 
 ---
 

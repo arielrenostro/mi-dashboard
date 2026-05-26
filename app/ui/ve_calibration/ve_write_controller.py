@@ -1,6 +1,6 @@
 import logging
 
-from PyQt6.QtCore import QObject, pyqtSignal, QTimer, QUrl
+from PyQt6.QtCore import QObject, QTimer, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from pyqtgraph.Qt.QtCore import Slot
 
@@ -14,14 +14,9 @@ logger = logging.getLogger(__name__)
 class VeWriteController(QObject):
     """
     Debounces VE map edits and sends only the modified rows to the ECU after 1s of inactivity.
-
-    For each pending row, emits command_requested(EcuCommand.VE_ROW_N, [raw_values...]).
-    After emitting, marks the row as sent so it is not re-sent unless edited again.
+    After the debounce window, sends each pending row directly via get_ecu_connection().
     Plays a single beep when the batch is dispatched.
     """
-
-    # (EcuCommand, list[int]) — connect to EcuConnection.send_command
-    command_requested = pyqtSignal(object, object)
 
     def __init__(self, sound_file: str, parent=None):
         super().__init__(parent)

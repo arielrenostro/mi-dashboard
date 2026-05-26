@@ -71,8 +71,8 @@ The output path is configured via `LOG_FILE` in `main.py`.
 The `Event` column (column 1) is normally empty.
 
 When the user presses `Enter`/`Return`:
-1. `EventMarker` emits `event_triggered`.
-2. `LogWriter.set_event_pending()` sets an internal flag.
+1. `EventMarker` publishes `EventMarkRequestedEvent` to the event bus.
+2. `LogWriter.set_event_pending()` is subscribed in `main.py` via `event_bus.subscribe(EVENT_MARK_REQUESTED, ...)` and sets an internal flag.
 3. The next call to `LogWriter.write()` writes `"MARK"` in the `Event` column and clears the flag.
 
 **Intent:** the mark is attached to the **next** frame that arrives after the key press, not to a synthetic row. This keeps the log time-aligned with ECU data.

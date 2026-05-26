@@ -21,66 +21,56 @@ When the operator edits the VE map (↑ or ↓ keys), changes accumulate in `VeM
 | Base class | `QObject` |
 | Debounce duration | 1000 ms |
 | Timer type | Single-shot (`QTimer`, `setSingleShot(True)`) |
-| Sound | `EVENT_SOUND` file (same `.wav` used by `EventMarker`) |
+| Sound | `ve_sound` `.wav` configured in `config.ve_calibration` |
 
-### Signal
-
-| Signal | Type | When emitted |
-|---|---|---|
-| `command_requested` | `EcuCommand` | Just before dispatching to the ECU |
+`VeWriteController` has no outbound signals. It dispatches ECU commands directly via `get_ecu_connection().send_command(cmd, values)`.
 
 ---
 
 ## Debounce behaviour
 
 ```
-User presses ↑ or ↓
-    └── ve_calibration_screen.ve_adjustment_made emitted
-            └── VeWriteController.on_adjustment_made()
-                    ├── timer.stop()    (cancel any pending send)
-                    └── timer.start(1000)
+User presses ↑ or ↓ (or R for reset)
+    └── VeCalibrationScreen calls self._writer.on_adjustment_made() directly
+            ├── timer.stop()    (cancel any pending send)
+            └── timer.start(1000)
 
 [1 second passes with no further edits]
-    └── _send_pending_changes() called
-            ├── get_pending_changes() from ve_map_state
+    └── _send_pending_rows() called
+            ├── ve_map_state.get_pending_rows()
             ├── if empty → return (no-op)
-            ├── log modified cells
-            ├── emit command_requested(EcuCommand.WRITE_ON_MEMORY)
+            ├── for each pending row:
+            │       values = ve_map_state.get_row_raw_values(row)
+            │       cmd = EcuCommand[f"VE_ROW_{row + 1}"]
+            │       ve_map_state.mark_row_sent(row)
+            │       get_ecu_connection().send_command(cmd, values)
             └── play beep (QMediaPlayer)
 ```
 
-Each edit resets the timer. Only one write is dispatched per inactivity window.
+Each edit resets the timer. Only one write batch is dispatched per inactivity window.
 
 **Intent:** the 1 s delay matches typical tuning cadence — the operator makes an adjustment, watches the AFR response, then makes the next adjustment. A sub-second debounce would create redundant ECU writes without improving responsiveness.
 
 ---
 
-## ECU command
+## ECU commands
 
-**Command used:** `EcuCommand.WRITE_ON_MEMORY` (`#D04`)
-
-**Current status:** the command is sent once per batch of modified cells. The actual per-cell payload format (`#D04` arguments — cell address + value encoding) is not yet specified and must be obtained from ECU firmware documentation.
-
-**TODO:** implement per-cell addressing in `_send_pending_changes()` using `ve_map_state.get_pending_changes()` output `[(row, col, new_value)]`.
+One `VE_ROW_N` command is sent per modified row (N = 1–16), carrying the full 16-cell row as raw values. Modified rows are marked as sent before the command is dispatched to avoid re-sending if the timer fires again before the ECU confirms.
 
 ---
 
 ## Audio feedback
 
-Uses `QMediaPlayer` + `QAudioOutput` following the same pattern as `EventMarker`:
-
+Uses `QMediaPlayer` + `QAudioOutput`:
 1. Stop any currently playing sound.
-2. Reset the media player position to the start.
-3. Play `EVENT_SOUND`.
+2. Play `ve_sound`.
 
 All `QMediaPlayer` calls happen in the main Qt thread (the controller lives in the main thread).
 
 ---
 
-## Wiring in main.py
+## Wiring
 
-```python
-ve_write_controller = VeWriteController(EVENT_SOUND)
-ve_calibration_screen.ve_adjustment_made.connect(ve_write_controller.on_adjustment_made)
-ve_write_controller.command_requested.connect(ecu_connection.send_command)
-```
+`VeWriteController` is owned by `VeCalibrationScreen`. No external wiring is required.
+
+`VeCalibrationScreen` calls `self._writer.on_adjustment_made()` directly after every VE adjustment — no signal, no external consumer.

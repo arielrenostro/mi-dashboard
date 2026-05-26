@@ -1,8 +1,10 @@
 import logging
 
-from PyQt6.QtCore import QObject, pyqtSignal, QUrl
+from PyQt6.QtCore import QObject, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
+from app.event.app_events import EcuCommandRequestedEvent
+from app.event.bus import event_bus
 from app.masterinjection.protocol import EcuCommand
 from app.state.state import vehicle_state
 
@@ -10,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 
 class LambdaToggle(QObject):
-    command_requested = pyqtSignal(object)
 
     def __init__(self, sound: str):
         super().__init__()
@@ -28,4 +29,4 @@ class LambdaToggle(QObject):
         else:
             cmd = EcuCommand.LAMBDA_LOOP_CLOSE
         logger.info("Alternando lambda loop: %s", cmd.description)
-        self.command_requested.emit(cmd)
+        event_bus.publish(EcuCommandRequestedEvent(command=cmd))

@@ -1,7 +1,10 @@
 import logging
 
-from PyQt6.QtCore import QObject, pyqtSignal, QUrl, Qt
+from PyQt6.QtCore import QObject, QUrl, Qt
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+
+from app.event.app_events import EventMarkRequestedEvent
+from app.event.bus import event_bus
 
 logger = logging.getLogger(__name__)
 
@@ -9,7 +12,6 @@ _TRIGGER_KEYS = (Qt.Key.Key_Return, Qt.Key.Key_Enter)
 
 
 class EventMarker(QObject):
-    event_triggered = pyqtSignal()
 
     def __init__(self, sound: str):
         super().__init__()
@@ -26,4 +28,4 @@ class EventMarker(QObject):
     def _mark(self):
         self._player.stop()
         self._player.play()
-        self.event_triggered.emit()
+        event_bus.publish(EventMarkRequestedEvent())

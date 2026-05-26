@@ -20,59 +20,60 @@ Implementation: `main.py` (top-level wiring), `app/ui/window.py` (screen wiring)
                ┌──────────▼──────────┐
                │  SignalProcessor    │  (main thread, QObject)
                │  process_line(str)  │
-               │  emitter(dict) ─────┼───────────────────────────────────────┐
-               └─────────────────────┘                                       │
-                                                                             │ parsed_data
-          ┌──────────────────────────────────────────────────────────────────┤
-          │                     │                     │                      │                      │
-          ▼                     ▼                     ▼                      ▼                      ▼
-  Dashboard             AlarmProcessor         VehicleState       LambdaLoopStateProcessor  VeCalibrationScreen
-  process_signals()     process_signals()      update()           process_signals()          process_signals()
-  (UI update)           (alarm check)          (shared state)     (effective loop state)     (top bar update)
+               │  emitter(dict) ─────┼──── (legacy, kept for compat)
+               │  + bus SIGNALS_RECEIVED   (all consumers use bus)
+               └─────────────────────┘
+                          │
+        ┌─────────────────┼──────────────────────────┐
+        ▼                 ▼                           ▼
+AlarmProcessor       VehicleState           DashboardScreen
+process_signals()    update()               on_signal_received()
+(via bus subscriber) (via bus subscriber)   (subscribed in on_activated())
 
-  LogWriter.write(str)  ◄──── EcuConnection.emitter (raw line, not parsed)
+  LogWriter.write(str)  ◄──── EcuConnection.emitter  (raw line, not parsed)
+
+event_bus → ALARM_FIRED
+  └──► DashboardScreen.fire_field_alarm()  (subscribed in on_activated())
 
   VeCalibrationScreen._highlight_timer (100 ms)
       └── reads vehicle_state.get(RPM/MAP)
       └── ve_map_state.calculate_interpolation_weights()
       └── highlight_interpolation() + mark_modified_cells() + update_heatmap()
+      └── _update_top_bar()
 
-  VeCalibrationScreen.ve_adjustment_made
-      └── VeWriteController.on_adjustment_made()
-              └── (after 1 s debounce) EcuConnection.send_command(WRITE_ON_MEMORY)
+  VeCalibrationScreen._adjust_ve() / reset
+      └── direct call: self._writer.on_adjustment_made()
+              └── (after 1 s debounce) get_ecu_connection().send_command(VE_ROW_N, values)
 ```
 
 ---
 
 ## Signal flow: inbound (ECU → UI)
 
-| Step | Producer | Signal/call | Consumer |
+| Step | Producer | Mechanism | Consumer |
 |---|---|---|---|
-| 1 | `EcuConnection` | `emitter(str)` | `SignalProcessor.process_line()` |
-| 2 | `EcuConnection` | `emitter(str)` | `LogWriter.write()` (raw line) |
-| 3 | `SignalProcessor` | `emitter(dict)` | `Dashboard.process_signals()` |
-| 4 | `SignalProcessor` | `emitter(dict)` | `AlarmProcessor.process_signals()` |
-| 5 | `SignalProcessor` | `emitter(dict)` | `VehicleState.update()` |
-| 6 | `SignalProcessor` | `emitter(dict)` | `LambdaLoopStateProcessor.process_signals()` |
-| 7 | `AlarmProcessor` | `emitter(Signal)` | `Dashboard.fire_field_alarm()` |
-| 8 | `SignalProcessor` | `emitter(dict)` | `VeCalibrationScreen.process_signals()` |
+| 1 | `EcuConnection` | `emitter(str)` pyqtSignal | `SignalProcessor.process_line()` |
+| 2 | `EcuConnection` | `emitter(str)` pyqtSignal | `LogWriter.write()` (raw line) |
+| 3 | `SignalProcessor` | bus `SIGNALS_RECEIVED` | `AlarmProcessor.process_signals()` |
+| 4 | `SignalProcessor` | bus `SIGNALS_RECEIVED` | `VehicleState.update()` |
+| 5 | `SignalProcessor` | bus `SIGNALS_RECEIVED` | `DashboardScreen.on_signal_received()` (when active) |
+| 6 | `AlarmProcessor` | bus `ALARM_FIRED` | `DashboardScreen.fire_field_alarm()` (when active) |
+| 7 | `VeCalibrationScreen` | 100 ms `QTimer` | reads `vehicle_state` directly |
 
 ---
 
 ## Signal flow: outbound (keyboard → ECU)
 
-| Step | Producer | Signal/call | Consumer |
+| Step | Producer | Mechanism | Consumer |
 |---|---|---|---|
-| 1 | `AppWindow` | `key_event(int)` | `EventMarker.handle_key()` |
-| 2 | `AppWindow` | `key_event(int)` | `KeyHoldDetector.on_key_pressed()` |
-| 3 | `AppWindow` | `key_released(int)` | `KeyHoldDetector.on_key_released()` |
-| 4 | `AppWindow` | `key_event(int)` | `VeCalibrationScreen.handle_key()` |
-| 5 | `KeyHoldDetector` | `triggered()` | `LambdaToggle.handle_trigger()` |
-| 6 | `LambdaToggle` | `command_requested(EcuCommand)` | `EcuConnection.send_command()` |
-| 7 | `LambdaToggle` | `command_requested(EcuCommand)` | `LambdaLoopStateProcessor.on_command_sent()` |
-| 8 | `EventMarker` | `event_triggered()` | `LogWriter.set_event_pending()` |
-| 9 | `VeCalibrationScreen` | `ve_adjustment_made()` | `VeWriteController.on_adjustment_made()` |
-| 10 | `VeWriteController` | `command_requested(EcuCommand)` | `EcuConnection.send_command()` |
+| 1 | `AppWindow` | `key_event(int)` pyqtSignal | `EventMarker.handle_key()` |
+| 2 | `AppWindow` | `key_event(int)` pyqtSignal | `KeyHoldDetector.on_key_pressed()` |
+| 3 | `AppWindow` | `key_released(int)` pyqtSignal | `KeyHoldDetector.on_key_released()` |
+| 4 | `KeyHoldDetector` | `triggered()` pyqtSignal | `LambdaToggle.handle_trigger()` |
+| 5 | `LambdaToggle` | bus `ECU_COMMAND_REQUESTED` | `EcuConnection.send_command()` |
+| 6 | `EventMarker` | bus `EVENT_MARK_REQUESTED` | `LogWriter.set_event_pending()` |
+| 7 | `VeCalibrationScreen` | direct call | `VeWriteController.on_adjustment_made()` |
+| 8 | `VeWriteController` | `get_ecu_connection().send_command()` | ECU (after 1 s debounce) |
 
 ---
 
@@ -87,10 +88,11 @@ Implementation: `main.py` (top-level wiring), `app/ui/window.py` (screen wiring)
 
 ### Thread safety rules
 
-- **No UI calls from background threads.** All UI updates go through `pyqtSignal` / `@Slot`, which Qt dispatches on the correct thread.
-- **`QMediaPlayer` must be called from its owner thread (main).** `AlarmProcessor` uses `Qt.ConnectionType.QueuedConnection` for `_play_requested` and `_stop_requested` to ensure this.
+- **No UI calls from background threads.** All UI updates go through `pyqtSignal` / `@Slot` or the event bus — Qt delivers cross-thread signals via `QueuedConnection` automatically.
+- **`QMediaPlayer` must be called from its owner thread (main).** `AlarmProcessor` uses `Qt.ConnectionType.QueuedConnection` for `_play_requested` and `_stop_requested`.
 - **`VehicleState`** is the only shared mutable state accessible from multiple threads. All access is protected by `threading.RLock`.
 - **`EcuConnection.send_command()`** is thread-safe: it uses a `queue.Queue` internally.
+- **`event_bus.publish()`** is thread-safe: `pyqtSignal.emit()` is re-entrant; cross-thread delivery is automatic.
 
 ---
 
@@ -104,11 +106,9 @@ The effective lambda loop state (stored in `VehicleState`) is not simply the raw
 | Open (0) | PEDAL > 0 OR MAP > 20 kPa | Unchanged (keep previous) | Transient open during deceleration fuel cut |
 | Open (0) | PEDAL == 0 AND MAP ≤ 20 kPa | Open | Genuine open-loop condition |
 
-**Deceleration threshold:** `MAP ≤ 20 kPa` (constant `DECEL_MAP_THRESHOLD` in `app/vehicle/lambda_loop_state_processor.py`).
+**Deceleration threshold:** `MAP ≤ 20 kPa`. During engine braking (foot off pedal, MAP drops to atmospheric), the ECU temporarily opens the lambda loop due to fuel cut. The filter holds the previous state until actual open-loop conditions are confirmed.
 
-**Intent:** during engine braking (foot off pedal, MAP drops to atmospheric), the ECU temporarily opens the lambda loop due to fuel cut. Accepting this as a genuine state change would cause spurious toggle logic. The filter holds the previous state until actual open-loop conditions are confirmed.
-
-When a toggle command is sent by the user, `LambdaLoopStateProcessor.on_command_sent()` updates `VehicleState` immediately without waiting for ECU confirmation, so the UI responds instantly.
+When a toggle command is dispatched via `ECU_COMMAND_REQUESTED`, `LambdaLoopStateProcessor.on_command_received()` updates `VehicleState` immediately, so the UI responds instantly without waiting for ECU confirmation.
 
 ---
 
@@ -118,24 +118,25 @@ When a toggle command is sent by the user, `LambdaLoopStateProcessor.on_command_
 1.  setup_logging()
 2.  QApplication created
 3.  LogWriter instantiated
-4.  AlarmProcessor instantiated; alarm_processor.start()
-5.  SignalProcessor instantiated; emitter connected to AlarmProcessor and VehicleState
-6.  EcuConnectionSerial or EcuConnectionMock chosen based on config.connection.mock;
-    registered via register_ecu_connection()
-7.  AppWindow created (full-screen, QStackedWidget)
-    └── _register_screens():
-        a. HomeScreen instantiated; screen_requested connected to AppWindow.show_screen
-        b. VeCalibrationScreen instantiated (owns VeWriteController internally)
-        c. DashboardScreen instantiated; SignalProcessor.emitter connected to on_signal_received
-        d. Screens added to QStackedWidget; show_screen("home") called
-8.  EcuConnection.emitter connected to SignalProcessor.process_line and LogWriter.write
-9.  EcuConnectionThread.start()
-10. app.exec()  ← Qt event loop runs until window is closed
-11. app_window.close(), alarm_processor.stop(), ecu_connection_thread.stop()
-
-[pending — not yet wired]:
-    LambdaLoopStateProcessor connected to SignalProcessor.emitter
-    LambdaToggle + KeyHoldDetector instantiated and connected to AppWindow key events
-    EventMarker instantiated and connected to AppWindow key event + LogWriter
-    ECU startup commands: RPM_BREAKPOINTS, MAP_BREAKPOINTS, VE rows 0–15
+4.  AlarmProcessor instantiated:
+      - subscribes to SIGNALS_RECEIVED on event_bus internally
+      - alarm_processor.start()
+5.  SignalProcessor instantiated
+6.  Bus subscriptions in main.py:
+      event_bus.subscribe(SIGNALS_RECEIVED, vehicle_state.update)
+      event_bus.subscribe(ECU_COMMAND_REQUESTED, ecu_connection.send_command)
+      event_bus.subscribe(EVENT_MARK_REQUESTED, log_writer.set_event_pending)
+7.  EcuConnectionSerial or EcuConnectionMock chosen; registered via register_ecu_connection()
+8.  AppWindow created (full-screen, QStackedWidget):
+      - subscribes to SCREEN_REQUESTED on event_bus
+      - _register_screens():
+          a. HomeScreen instantiated (publishes SCREEN_REQUESTED on Enter)
+          b. VeCalibrationScreen instantiated (owns VeWriteController directly)
+          c. DashboardScreen instantiated (subscribes SIGNALS_RECEIVED + ALARM_FIRED in on_activated)
+          d. Screens added to QStackedWidget; show_screen("home") called
+9.  Keyboard handlers wired (EventMarker, KeyHoldDetector, LambdaToggle)
+10. EcuConnection.emitter connected to SignalProcessor.process_line and LogWriter.write
+11. EcuConnectionThread.start()
+12. app.exec()  ← Qt event loop
+13. app_window.close(), alarm_processor.stop(), ecu_connection_thread.stop()
 ```
