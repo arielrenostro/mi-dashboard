@@ -15,7 +15,6 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QFrame,
 )
-from pyqtgraph.Qt.QtCore import Slot
 
 from app.config import config
 from app.ecu_connection import get_ecu_connection
@@ -55,16 +54,14 @@ def _interpolate_color(weight: float) -> str:
 
 
 _HEATMAP_STOPS = [
-    (0.00, (0, 0, 100)),
-    (0.25, (0, 110, 140)),
-    (0.50, (0, 130, 0)),
-    (0.75, (140, 140, 0)),
+    (0.00, (0, 130, 0)),
+    (0.50, (140, 140, 0)),
     (1.00, (160, 20, 0)),
 ]
 
 
 def _ve_cell_color(ve_value: float, ve_min: float, ve_max: float) -> QColor:
-    """Heatmap color for a VE cell: dark blue (low) → red (high)."""
+    """Heatmap color for a VE cell: green (low) → yellow → red (high)."""
     t = 0.5 if ve_max <= ve_min else max(0.0, min(1.0, (ve_value - ve_min) / (ve_max - ve_min)))
     for i in range(len(_HEATMAP_STOPS) - 1):
         t0, c0 = _HEATMAP_STOPS[i]
@@ -316,13 +313,13 @@ class VeCalibrationScreen(Screen):
         plot_widget.setLabel("left", "VE (%)", color="#888888")
         plot_widget.showGrid(x=True, y=True, alpha=0.2)
 
-        # One line per MAP row: blue (low MAP) → orange (high MAP)
+        # One line per MAP row: green (low MAP) → red (high MAP)
         ve_lines = []
         for i in range(16):
             t = i / 15.0
-            r = int(0 + t * 255)
-            g = int(136 - t * 136)
-            b = int(255 - t * 255)
+            r = int(t * 200)
+            g = int(180 - t * 180)
+            b = 0
             curve = pg.PlotCurveItem(pen=pg.mkPen(color=(r, g, b), width=1))
             plot_widget.addItem(curve)
             ve_lines.append(curve)
