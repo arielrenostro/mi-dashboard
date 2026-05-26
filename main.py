@@ -1,3 +1,5 @@
+import logging
+import os
 import sys
 from datetime import datetime
 
@@ -16,10 +18,7 @@ from app.masterinjection.signal_processor import SignalProcessor
 from app.state.state import vehicle_state
 from app.ui.window import AppWindow
 
-PORT = "COM1"
-BAUDRATE = 115200
-LOG_FILE = f"C:\\Users\\ariel\\OneDrive\\Carros\\206\\Master Injection\\Datalogs\\dash\\log_stream_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-EVENT_SOUND = "alarm.wav"
+logger = logging.getLogger(__name__)
 
 
 # ==========================================
@@ -28,10 +27,13 @@ EVENT_SOUND = "alarm.wav"
 
 def main():
     setup_logging()
+    logger.info("Starting app")
 
     app = QApplication(sys.argv)
 
-    log_writer = LogWriter(log_file=LOG_FILE)
+    log_writer = LogWriter(
+        log_file=os.path.join(config.datalog.path, f'log_stream_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv'),
+    )
 
     alarm_processor = AlarmProcessor(config.alarm.sound)
     alarm_processor.start()

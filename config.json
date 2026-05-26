@@ -1,16 +1,19 @@
 {
   "alarm": {
-    "sound": "alarm.wav"
+    "sound": "resources/alarm.wav"
   },
   "ve_calibration": {
-    "ve_sound": "papaleguas.mp3",
-    "closed_sound": "closed.wav",
-    "open_sound": "open.wav"
+    "ve_sound": "resources/papaleguas.mp3",
+    "closed_sound": "resources/closed.wav",
+    "open_sound": "resources/open.wav"
   },
   "connection": {
     "mock": "C:\\Users\\ariel\\OneDrive\\Carros\\206\\Master Injection\\Datalogs\\4Bar - 9\\log_stream_fixed.csv",
     "port": "COM1",
     "baudrate": 115200
+  },
+  "datalog": {
+    "path": "C:\\Users\\ariel\\OneDrive\\Carros\\206\\Master Injection\\Datalogs\\dash"
   },
   "dashboard": {
     "graph_x_size": 150,

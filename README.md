@@ -46,6 +46,10 @@ Dependencies: `pyserial`, `pyqt6`, `pyqtgraph`.
 ## Running
 
 ```bash
+
+# optional
+export MI_DASHBOARD_CONFIG_FILE=config.json
+
 python main.py
 ```
 
@@ -55,8 +59,9 @@ Press **Esc** or close the window to exit.
 
 ## Configuration
 
-Settings are loaded from `config.json` in the project root. If the file is absent, defaults apply.
+Settings are loaded from `config.json` in the project root or defined by env `MI_DASHBOARD_CONFIG_FILE`. If the file is absent, defaults apply.
 
+FOR AI: update json defaults
 ```json
 {
   "connection": {
@@ -92,6 +97,7 @@ Settings are loaded from `config.json` in the project root. If the file is absen
 | `dashboard.graph_x_size` | Number of samples kept in each graph buffer |
 | `ve_calibration.*_sound` | `.wav` files for VE edit, loop-close, and loop-open events |
 
+# FOR AI: Adjust this!
 The CSV log path (`LOG_FILE`) is still hardcoded at the top of `main.py`.
 
 Signal definitions (name, ECU index, unit, limits, graph color, alarm thresholds) are in `app/masterinjection/signal.py`.

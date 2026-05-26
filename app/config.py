@@ -23,6 +23,12 @@ class AppConfigAlarm:
         self.sound: str = config_dict.get('sound', 'alarm.wav')
 
 
+class AppConfigDatalog:
+
+    def __init__(self, config_dict: dict):
+        self.path: str = config_dict.get('path', os.path.pathsep)
+
+
 class AppConfigVeCalibration:
 
     def __init__(self, config_dict: dict):
@@ -46,12 +52,14 @@ class AppConfig:
         self.alarm = AppConfigAlarm(config_dict.get('alarm', {}))
         self.connection = AppConfigConnection(config_dict.get('connection', {}))
         self.ve_calibration = AppConfigVeCalibration(config_dict.get('ve_calibration', {}))
+        self.datalog = AppConfigDatalog(config_dict.get('datalog', {}))
 
 
 def _setup_config():
+    config_path = os.getenv('MI_DASHBOARD_CONFIG_FILE', 'config.json')
     config_dict = dict()
-    if os.path.isfile('config.json'):
-        with open('config.json', 'r') as f:
+    if os.path.isfile(config_path):
+        with open(config_path, 'r') as f:
             config_dict = json.loads(f.read())
     return AppConfig(config_dict)
 
