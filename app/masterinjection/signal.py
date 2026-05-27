@@ -5,6 +5,8 @@ from typing import Any
 class Signal(enum.Enum):
     RPM = {
         "name": "RPM",
+        "frame": "D01",
+        "frame_index": 1,
         "index": 1,
         "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
@@ -21,6 +23,8 @@ class Signal(enum.Enum):
 
     MAP = {
         "name": "MAP",
+        "frame": "D01",
+        "frame_index": 2,
         "index": 2,
         "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
@@ -37,6 +41,8 @@ class Signal(enum.Enum):
 
     BOOST = {
         "name": "Boost",
+        "frame": "D01",
+        "frame_index": 3,
         "index": 3,
         "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
@@ -53,6 +59,8 @@ class Signal(enum.Enum):
 
     LAMBDA = {
         "name": "λ",
+        "frame": "D01",
+        "frame_index": 6,
         "index": 6,
         "converter": lambda x: float(x) / 1000,
         "for_label": lambda x: f'{x:.2f}',
@@ -69,6 +77,8 @@ class Signal(enum.Enum):
 
     INJ_UTIL = {
         "name": "Inj. Duty",
+        "frame": "D01",
+        "frame_index": 8,
         "index": 8,
         "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
@@ -85,6 +95,8 @@ class Signal(enum.Enum):
 
     VE = {
         "name": "VE",
+        "frame": "D01",
+        "frame_index": 9,
         "index": 9,
         "converter": lambda x: float(x) / 10,
         "for_label": lambda x: f'{x:.1f}',
@@ -101,6 +113,8 @@ class Signal(enum.Enum):
 
     IGN = {
         "name": "Ign",
+        "frame": "D01",
+        "frame_index": 10,
         "index": 10,
         "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
@@ -117,6 +131,8 @@ class Signal(enum.Enum):
 
     CLT = {
         "name": "CLT",
+        "frame": "D01",
+        "frame_index": 19,
         "index": 19,
         "converter": lambda x: int(x) - 273,
         "for_label": lambda x: f'{x}',
@@ -133,6 +149,8 @@ class Signal(enum.Enum):
 
     IAT = {
         "name": "IAT",
+        "frame": "D01",
+        "frame_index": 20,
         "index": 20,
         "converter": lambda x: int(x) - 273,
         "for_label": lambda x: f'{x}',
@@ -149,6 +167,8 @@ class Signal(enum.Enum):
 
     VSS = {
         "name": "Speed",
+        "frame": "D01",
+        "frame_index": 23,
         "index": 23,
         "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
@@ -165,6 +185,8 @@ class Signal(enum.Enum):
 
     LAMBDA_LOOP = {
         "name": "λ Loop",
+        "frame": "D01",
+        "frame_index": 24,
         "index": 24,
         "converter": lambda x: int(x),
         "for_label": lambda x: 'Closed' if x == 1 else 'Open',
@@ -181,6 +203,8 @@ class Signal(enum.Enum):
 
     LAMBDA_TARGET = {
         "name": "λ Target",
+        "frame": "D01",
+        "frame_index": 25,
         "index": 25,
         "converter": lambda x: float(x) / 1000,
         "for_label": lambda x: f'{x:.2f}',
@@ -197,6 +221,8 @@ class Signal(enum.Enum):
 
     FUEL_TRIM = {
         "name": "Fuel Trim",
+        "frame": "D01",
+        "frame_index": 26,
         "index": 26,
         "converter": lambda x: (float(x) - 1000) / 10,
         "for_label": lambda x: f'{x:.1f}',
@@ -213,6 +239,8 @@ class Signal(enum.Enum):
 
     BOOST_TARGET = {
         "name": "Boost Target",
+        "frame": "D01",
+        "frame_index": 28,
         "index": 28,
         "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
@@ -229,6 +257,8 @@ class Signal(enum.Enum):
 
     PEDAL = {
         "name": "Pedal",
+        "frame": "D01",
+        "frame_index": 29,
         "index": 29,
         "converter": lambda x: min(100.00, (float(x) / 990.0) * 100.0),
         "for_label": lambda x: f'{x:.1f}',
@@ -245,6 +275,8 @@ class Signal(enum.Enum):
 
     GEAR = {
         "name": "Gear",
+        "frame": "D01",
+        "frame_index": 33,
         "index": 33,
         "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',

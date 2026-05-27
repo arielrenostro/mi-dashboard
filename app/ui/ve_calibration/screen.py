@@ -17,10 +17,11 @@ from PyQt6.QtWidgets import (
 )
 
 from app.config import config
-from app.ecu_connection import get_ecu_connection
+from app.event.app_events import AppEventType, EcuCommandRequestedEvent
+from app.event.bus import event_bus
 from app.masterinjection.protocol import EcuCommand
 from app.masterinjection.signal import Signal
-from app.state.event import VehicleStateChangeEvent, EventType
+from app.state.event import EventType
 from app.state.state import vehicle_state
 from app.ui.base.screen import Screen
 from app.ui.components.signal_card import SignalCard
@@ -108,8 +109,6 @@ class VeCalibrationScreen(Screen):
         self._highlight_timer = QTimer()
         self._highlight_timer.timeout.connect(self._update_highlight)
 
-        vehicle_state.emitter.connect(self._on_vehicle_state_event)
-
         self._writer = VeWriteController(config.ve_calibration.ve_sound)
 
         self._audio_closed = QAudioOutput()
@@ -132,10 +131,10 @@ class VeCalibrationScreen(Screen):
         elif event.key() == Qt.Key.Key_Down:
             self._adjust_ve(-5.0)
         elif event.key() == Qt.Key.Key_O:
-            get_ecu_connection().send_command(EcuCommand.LAMBDA_LOOP_OPEN)
+            event_bus.publish(EcuCommandRequestedEvent(command=EcuCommand.LAMBDA_LOOP_OPEN))
             self._player_open.play()
         elif event.key() == Qt.Key.Key_P:
-            get_ecu_connection().send_command(EcuCommand.LAMBDA_LOOP_CLOSE)
+            event_bus.publish(EcuCommandRequestedEvent(command=EcuCommand.LAMBDA_LOOP_CLOSE))
             self._player_closed.play()
         elif event.key() == Qt.Key.Key_R:
             ve_map_state.reset()
@@ -585,6 +584,7 @@ class VeCalibrationScreen(Screen):
 
     def on_activated(self):
         self._highlight_timer.start(100)
+        self._subscribe(AppEventType.VEHICLE_STATE_CHANGED, self._on_vehicle_state_event)
 
     def on_deactivated(self):
         self._highlight_timer.stop()
@@ -615,16 +615,18 @@ class VeCalibrationScreen(Screen):
                 if item is not None:
                     item.setText(f"{ve_map_state.ve_map[data_row][col]}")
 
-    def _on_vehicle_state_event(self, event: VehicleStateChangeEvent):
-        if event.type_ == EventType.MAP_BREAKPOINTS:
-            ve_map_state.load_breakpoints_map(event.args[0])
+    def _on_vehicle_state_event(self, event):
+        change_type = getattr(event, 'change_type', None)
+        args = getattr(event, 'args', ())
+        if change_type == EventType.MAP_BREAKPOINTS:
+            ve_map_state.load_breakpoints_map(args[0])
             self.refresh_axes()
-        elif event.type_ == EventType.RPM_BREAKPOINTS:
-            ve_map_state.load_breakpoints_rpm(event.args[0])
+        elif change_type == EventType.RPM_BREAKPOINTS:
+            ve_map_state.load_breakpoints_rpm(args[0])
             self.refresh_axes()
-        elif event.type_ == EventType.FUEL_MAP:
-            ve_map_state.load_row(event.args[0], event.args[1])
-            self.update_row(event.args[0])
+        elif change_type == EventType.FUEL_MAP:
+            ve_map_state.load_row(args[0], args[1])
+            self.update_row(args[0])
 
     def refresh_axes(self):
         """Update table column/row headers from the current ve_map_state axes."""

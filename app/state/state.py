@@ -2,35 +2,20 @@ import threading
 import time
 from typing import Optional
 
-from PyQt6.QtCore import QObject, pyqtSignal
-
 from app.masterinjection.signal import ParsedSignal
 from app.state.event import VehicleStateChangeEvent, EventType
-
-ALARM_DURATION = 2
-
-
-class _VehicleStateEmitter(QObject):
-    signal = pyqtSignal(VehicleStateChangeEvent)
 
 
 class VehicleState:
 
     def __init__(self):
-        self._emitter: Optional[_VehicleStateEmitter] = None
         self._lock = threading.RLock()
         self._signals: dict = {}
-        self._alarm_timestamps: dict = {}
+        self._alarm_timestamps: dict = {}  # Signal → (fired_at: float, expires_at: float)
         self._lambda_loop_closed: bool = False
         self._rpm_breakpoints: list[int] = [0 for _ in range(16)]
         self._map_breakpoints: list[int] = [0 for _ in range(16)]
         self._ve_map: list[list[int]] = [[0 for _ in range(16)] for _ in range(16)]
-
-    @property
-    def emitter(self):
-        if self._emitter is None:
-            self._emitter = _VehicleStateEmitter()
-        return self._emitter.signal
 
     def update(self, parsed_data: dict) -> None:
         with self._lock:
@@ -46,18 +31,25 @@ class VehicleState:
 
     def is_alarm_firing(self, signal) -> bool:
         with self._lock:
-            last = self._alarm_timestamps.get(signal)
-            return last is not None and (time.time() - last) < ALARM_DURATION
+            entry = self._alarm_timestamps.get(signal)
+            if entry is None:
+                return False
+            _, expires_at = entry
+            return time.time() < expires_at
 
     def is_any_alarm_firing(self) -> bool:
         with self._lock:
             now = time.time()
-            return any((now - t) < ALARM_DURATION for t in self._alarm_timestamps.values())
+            return any(now < expires_at for _, expires_at in self._alarm_timestamps.values())
 
-    def set_alarm(self, signal, active: bool) -> None:
+    def set_alarm(self, signal, active: bool, duration_s: float = 2.0) -> None:
         with self._lock:
             if active:
-                self._alarm_timestamps[signal] = time.time()
+                now = time.time()
+                expires_at = now + duration_s
+                self._alarm_timestamps[signal] = (now, expires_at)
+            else:
+                self._alarm_timestamps.pop(signal, None)
 
     def set_lambda_loop_state(self, is_closed: bool) -> None:
         with self._lock:
@@ -69,34 +61,40 @@ class VehicleState:
 
     def get_rpm_breakpoints(self) -> list[int]:
         with self._lock:
-            return self._rpm_breakpoints
+            return list(self._rpm_breakpoints)
 
     def set_rpm_breakpoints(self, breakpoints: list[int]) -> None:
         with self._lock:
             self._rpm_breakpoints = breakpoints
-            self.emitter.emit(VehicleStateChangeEvent(EventType.RPM_BREAKPOINTS, [breakpoints]))
+        from app.event.bus import event_bus
+        from app.event.app_events import VehicleStateChangedEvent
+        event_bus.publish(VehicleStateChangedEvent(change_type=EventType.RPM_BREAKPOINTS, args=(breakpoints,)))
 
     def get_map_breakpoints(self) -> list[int]:
         with self._lock:
-            return self._map_breakpoints
+            return list(self._map_breakpoints)
 
     def set_map_breakpoints(self, breakpoints: list[int]) -> None:
         with self._lock:
             self._map_breakpoints = breakpoints
-            self.emitter.emit(VehicleStateChangeEvent(EventType.MAP_BREAKPOINTS, [breakpoints]))
+        from app.event.bus import event_bus
+        from app.event.app_events import VehicleStateChangedEvent
+        event_bus.publish(VehicleStateChangedEvent(change_type=EventType.MAP_BREAKPOINTS, args=(breakpoints,)))
 
     def get_ve_map(self) -> list[list[int]]:
         with self._lock:
-            return self._ve_map
+            return [list(row) for row in self._ve_map]
 
     def set_ve_map(self, ve_line: list[int], ve_idx: int) -> None:
         if len(ve_line) != 16:
             return
-        if 0 > ve_idx > 15:
+        if not (0 <= ve_idx <= 15):
             return
         with self._lock:
             self._ve_map[ve_idx] = ve_line
-            self.emitter.emit(VehicleStateChangeEvent(EventType.FUEL_MAP, [ve_idx, ve_line]))
+        from app.event.bus import event_bus
+        from app.event.app_events import VehicleStateChangedEvent
+        event_bus.publish(VehicleStateChangedEvent(change_type=EventType.FUEL_MAP, args=(ve_idx, ve_line)))
 
 
 vehicle_state = VehicleState()

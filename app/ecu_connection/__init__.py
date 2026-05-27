@@ -1,20 +1,19 @@
-from app.ecu_connection.ecu_connection import EcuConnection
-from app.ecu_connection.thread import EcuConnectionThread
+from app.ecu_connection.session import EcuSession
 
-ecu_connection: EcuConnection
-ecu_connection_thread: EcuConnectionThread
+_ecu_session: EcuSession | None = None
 
 
-def register_ecu_connection(instance: EcuConnection):
-    global ecu_connection
-    global ecu_connection_thread
-    ecu_connection = instance
-    ecu_connection_thread = EcuConnectionThread(ecu_connection)
+def register_ecu_session(session: EcuSession) -> None:
+    global _ecu_session
+    _ecu_session = session
 
 
-def get_ecu_connection() -> EcuConnection:
-    return ecu_connection
+def get_ecu_session() -> EcuSession:
+    if _ecu_session is None:
+        raise RuntimeError("EcuSession não registrada — chamar register_ecu_session() primeiro")
+    return _ecu_session
 
 
-def get_ecu_connection_thread() -> EcuConnectionThread:
-    return ecu_connection_thread
+# Alias para compatibilidade (remover após confirmar que nenhum módulo usa)
+def get_ecu_connection() -> EcuSession:
+    return get_ecu_session()

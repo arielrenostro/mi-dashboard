@@ -4,7 +4,6 @@ from PyQt6.QtWidgets import QWidget, QStackedWidget
 from app.config import config
 from app.event.app_events import AppEventType
 from app.event.bus import event_bus
-from app.masterinjection.signal_processor import SignalProcessor
 from app.ui.dashboard.screen import DashboardScreen
 from app.ui.home.screen import HomeScreen
 from app.ui.ve_calibration.screen import VeCalibrationScreen
@@ -16,9 +15,8 @@ class AppWindow(QWidget):
     key_event    = pyqtSignal(int)
     key_released = pyqtSignal(int)
 
-    def __init__(self, signal_processor: SignalProcessor):
+    def __init__(self):
         super().__init__()
-        self._signal_processor = signal_processor
 
         self.stacked_widget = QStackedWidget()
         self.setLayout(self._create_layout())

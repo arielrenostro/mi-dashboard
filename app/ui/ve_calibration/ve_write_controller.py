@@ -4,7 +4,8 @@ from PyQt6.QtCore import QObject, QTimer, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from pyqtgraph.Qt.QtCore import Slot
 
-from app.ecu_connection import get_ecu_connection
+from app.event.app_events import EcuCommandRequestedEvent
+from app.event.bus import event_bus
 from app.masterinjection.protocol import EcuCommand
 from app.ui.ve_calibration.ve_map_state import ve_map_state
 
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 class VeWriteController(QObject):
     """
     Debounces VE map edits and sends only the modified rows to the ECU after 1s of inactivity.
-    After the debounce window, sends each pending row directly via get_ecu_connection().
+    After the debounce window, publishes EcuCommandRequestedEvent for each pending row via bus.
     Plays a single beep when the batch is dispatched.
     """
 
@@ -51,7 +52,7 @@ class VeWriteController(QObject):
             cmd = EcuCommand[f"VE_ROW_{row + 1}"]
             logger.debug("Enviando %s: %s", cmd.cmd, values)
             ve_map_state.mark_row_sent(row)   # remove da fila ANTES de emitir
-            get_ecu_connection().send_command(cmd, values)
+            event_bus.publish(EcuCommandRequestedEvent(command=cmd, args=values))
 
         self._player.stop()
         self._player.play()
