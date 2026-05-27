@@ -1,24 +1,25 @@
 Você é um orchestrator. Faça as ações abaixo:
+
 1. Em um Agent Sonnet:
-1.1. Leia as seções de tarefas abaixo, elas podem estar em contradição ou mencionar comportamentos que impactem outras seções. Revise-as, ajuste conteúdos faltantes presentes em outras seções e leve em consideração que isto será utilizado para VibeCoding;
-1.2. Se existirem problemas identificados, liste ao usuário e permita que ele responda com os ajustes. Volte ao ponto 1.1;
-1.3. Documente elas num arquivo MD "0001-request-revision";
-1.4. Confronte estas especificações com as especificações do projeto. Procure por contradições, conflitos, itens faltantes e possíveis problemas;
-1.5. Se existirem problemas identificados, liste ao usuário e permita que ele responda com os ajustes. Volte ao ponto 1.4;
-1.6. Documente o resultado num arquivo MD "0002-spec-revision";
+   1. Leia as seções de tarefas abaixo, elas podem estar em contradição ou mencionar comportamentos que impactem outras seções. Revise-as, ajuste conteúdos faltantes presentes em outras seções e leve em consideração que isto será utilizado para VibeCoding;
+   2. Se existirem problemas identificados, liste ao usuário, permita que ele responda com os ajustes e fique em loop até que tudo seja resolvido;
+   3. Documente elas num arquivo MD "0001-request-revision";
+   4. Confronte estas especificações com as especificações do projeto. Procure por contradições, conflitos, itens faltantes e possíveis problemas;
+   5. Se existirem problemas identificados, liste ao usuário, permita que ele responda com os ajustes e fique em loop até que tudo seja resolvido;
+   6. Documente o resultado num arquivo MD "0002-spec-revision";
 
 2. Em um Agent Sonnet:
-2.1. Leia o arquivo "0002-spec-revision" e quebre as mudanças em atividades com contexto, história de usuário, requisitos funcionais, requisitos não funcionais, specs, arquivos de referencia e tasks
-2.2. Gere um plano de execução que possa ser paralelizado;
-2.3. Documente o plano de execução no arquivo md "0003-execution-plan";
-2.4. Documente as atividades em arquivos md "XXXX-hist-XX";
+   1. Leia o arquivo "0002-spec-revision" e quebre as mudanças em atividades com contexto, história de usuário, requisitos funcionais, requisitos não funcionais, specs, arquivos de referencia e tasks
+   2. Gere um plano de execução que possa ser paralelizado;
+   3. Documente o plano de execução no arquivo md "0003-execution-plan";
+   4. Documente as atividades em arquivos md "XXXX-hist-XX";
 
 3. Peça ao usuário confirmação para continuar. Após a confirmação, em um Agent Sonnet:
-3.1. Leia o "0003-execution-plan";
-3.2. Execute em Agents Sonnet o plano de ação.
+   1. Leia o "0003-execution-plan";
+   2. Execute em Agents Sonnet o plano de ação.
 
 4. Em um Agent Sonnet:
-4.1. Revise as entregas e gere um relatório MD.
+   1. Revise as entregas e gere um relatório MD.
 
 
 Tarefas:
