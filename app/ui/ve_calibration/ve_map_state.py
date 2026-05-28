@@ -140,6 +140,13 @@ class VeMapState:
                     weights[key] = weights.get(key, 0.0) + w
         return weights
 
+    def adjust_ve_percent(self, rpm: float, map_val: float, percent: float):
+        """Apply a percentage increment to each active cell under the cursor."""
+        weights = self.calculate_interpolation_weights(rpm, map_val)
+        factor = 1 + percent / 100
+        for (row, col) in weights:
+            self.set_cell(row, col, self.get_cell(row, col) * factor)
+
     def adjust_ve(self, rpm: float, map_val: float, delta_pct: float):
         """
         Apply a VE% delta distributed by interpolation weights.
