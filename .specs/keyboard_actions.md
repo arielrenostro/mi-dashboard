@@ -19,6 +19,7 @@ Actions marked **Global** are active on every screen. Actions marked with a scre
 | Home menu confirm | `Enter` | HomeScreen | Instant (press) | — | — | Opens selected screen | Active |
 | VE increase | `↑` | VE Calibration | Instant (press) | — | `ve_sound` | `adjust_ve(rpm, map, +5.0)` + 1 s debounce to ECU | Active |
 | VE decrease | `↓` | VE Calibration | Instant (press) | — | `ve_sound` | `adjust_ve(rpm, map, -5.0)` + 1 s debounce to ECU | Active |
+| VE % increment | `G` | VE Calibration | Instant (press) | — | — | Opens `PercentageDialog`; on confirm calls `adjust_ve_by_percentage(rpm, map, pct)` + 1 s debounce to ECU | Active |
 | VE reset | `R` | VE Calibration | Instant (press) | — | `ve_sound` | Restores all VE cells to original values + sends to ECU | Active |
 | Lambda open | `O` | VE Calibration | Instant (press) | — | `open_sound` | Sends `LAMBDA_LOOP_OPEN` to ECU | Active |
 | Lambda close | `P` | VE Calibration | Instant (press) | — | `closed_sound` | Sends `LAMBDA_LOOP_CLOSE` to ECU | Active |

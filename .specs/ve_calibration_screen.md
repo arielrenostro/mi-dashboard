@@ -131,7 +131,7 @@ The heatmap and scatter are updated in the same 100 ms cycle as the table highli
 Single-line label with all keyboard shortcuts, centered, gray (`#888888`), Arial 12, 40 px fixed height:
 
 ```
-↑ +6 VE   ↓ -6 VE   Espaço Loop Open/Closed   R Resetar   ESC Voltar
+↑ +5 VE   ↓ -5 VE   G %VE   O Open Loop   P Close Loop   R Resetar   ESC Voltar
 ```
 
 ---
@@ -157,13 +157,37 @@ See `keyboard_actions.md` for the full action table. Summary of actions scoped t
 
 | Key | Effect |
 |---|---|
-| `↑` | `ve_map_state.adjust_ve(rpm, map, +6.0)` |
-| `↓` | `ve_map_state.adjust_ve(rpm, map, -6.0)` |
+| `↑` | `ve_map_state.adjust_ve(rpm, map, +5.0)` |
+| `↓` | `ve_map_state.adjust_ve(rpm, map, -5.0)` |
+| `G` | Opens `PercentageDialog`; on confirm calls `ve_map_state.adjust_ve_by_percentage(rpm, map, pct)` |
+| `O` | Sends `LAMBDA_LOOP_OPEN` to ECU |
+| `P` | Sends `LAMBDA_LOOP_CLOSE` to ECU |
 | `R` | `ve_map_state.reset()` |
 | `Space` (2 s hold) | Toggle lambda loop (global action, handled by `KeyHoldDetector` + `LambdaToggle`) |
 | `ESC` | Return to home (handled by `AppWindow`) |
 
 After each edit, `self._writer.on_adjustment_made()` is called directly to trigger the write debounce timer (see `ve_write.md`).
+
+---
+
+## Percentage Dialog (`PercentageDialog`)
+
+Implementation: `app/ui/ve_calibration/percentage_dialog.py`.
+
+A `QDialog` modal that captures a percentage value from the user for proportional VE increment.
+
+### Behavior
+
+1. Opened when `G` is pressed while RPM and MAP data are available.
+2. Displays a single `QLineEdit` with `QDoubleValidator` (range −100 to 100, 2 decimal places).
+3. Press **Enter** or click **Confirmar** → `accept()`. The dialog exposes the value via `value() -> float`.
+4. Press **ESC** or click **Cancelar** → `reject()`. No changes are applied.
+5. On invalid input (non-numeric), the field turns red and the dialog stays open.
+6. Commas are normalised to dots before parsing (locale tolerance).
+
+### Styling
+
+Consistent with the screen dark theme: `#111111` background, white text, `#555555` borders. Confirm button styled green (`#1A3A1A` / `#00FF88`); cancel button uses the default dark style.
 
 ---
 

@@ -100,6 +100,7 @@ When `col1 == col2` or `row1 == row2`, duplicate dict keys are collapsed by summ
 | `set_cell` | `(row, col, value)` | Write a cell; clamp to `[0, 1999.9]`; update `modified_cells` |
 | `reset` | `()` | Restore all cells from `original_ve_map`; clear `modified_cells` |
 | `adjust_ve` | `(rpm, map_val, delta)` | Apply `delta` distributed by interpolation weights |
+| `adjust_ve_by_percentage` | `(rpm, map_val, pct)` | Multiply each cursor cell by `(1 + pct / 100)` |
 | `calculate_interpolation_weights` | `(rpm, map_val) → dict` | Returns `{(row, col): float}` |
 | `get_pending_changes` | `() → list[(row, col, value)]` | All cells that differ from original |
 
@@ -115,6 +116,15 @@ new_value = current_value + delta × w
 ```
 
 Total effective VE change equals `delta`, distributed proportionally across the active cells.
+
+### `adjust_ve_by_percentage` distribution
+
+For each active cell `(row, col)` with weight > 0 (weights are not used for scaling here):
+```
+new_raw = round(raw × (1 + pct / 100))
+```
+
+Each cursor cell is scaled independently by the same percentage. A `pct` of `10` increases all cursor cells by 10%; a `pct` of `-5` decreases them by 5%.
 
 ---
 

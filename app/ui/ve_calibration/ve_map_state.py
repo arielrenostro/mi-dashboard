@@ -151,5 +151,12 @@ class VeMapState:
         for (row, col), weight in weights.items():
             self.set_cell(row, col, self.get_cell(row, col) + delta_raw * weight)
 
+    def adjust_ve_by_percentage(self, rpm: float, map_val: float, pct: float):
+        """Increment each cursor cell by pct%. new_raw = round(raw * (1 + pct / 100))."""
+        weights = self.calculate_interpolation_weights(rpm, map_val)
+        for (row, col) in weights:
+            raw = self.get_cell(row, col)
+            self.set_cell(row, col, round(raw * (1 + pct / 100)))
+
 
 ve_map_state = VeMapState()

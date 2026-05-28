@@ -4,6 +4,7 @@ from PyQt6.QtCore import Qt, QTimer, QUrl
 from PyQt6.QtGui import QFont, QColor, QKeyEvent
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtWidgets import (
+    QDialog,
     QVBoxLayout,
     QHBoxLayout,
     QLabel,
@@ -15,6 +16,8 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QFrame,
 )
+
+from app.ui.ve_calibration.percentage_dialog import PercentageDialog
 
 from app.config import config
 from app.ecu_connection import get_ecu_connection
@@ -137,8 +140,20 @@ class VeCalibrationScreen(Screen):
         elif event.key() == Qt.Key.Key_P:
             get_ecu_connection().send_command(EcuCommand.LAMBDA_LOOP_CLOSE)
             self._player_closed.play()
+        elif event.key() == Qt.Key.Key_G:
+            self._open_percentage_dialog()
         elif event.key() == Qt.Key.Key_R:
             ve_map_state.reset()
+            self._writer.on_adjustment_made()
+
+    def _open_percentage_dialog(self):
+        rpm_data = vehicle_state.get(Signal.RPM)
+        map_data = vehicle_state.get(Signal.MAP)
+        if rpm_data is None or map_data is None:
+            return
+        dlg = PercentageDialog(self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            ve_map_state.adjust_ve_by_percentage(rpm_data.value, map_data.value, dlg.value())
             self._writer.on_adjustment_made()
 
     # ── Construction helpers ─────────────────────────────────────────────────
@@ -367,7 +382,7 @@ class VeCalibrationScreen(Screen):
         hint_font = QFont("Arial", 12)
 
         hint = QLabel(
-            "↑ +5 VE   ↓ -5 VE   O Open Loop   P Close Loop   R Resetar   ESC Voltar"
+            "↑ +5 VE   ↓ -5 VE   G %VE   O Open Loop   P Close Loop   R Resetar   ESC Voltar"
         )
         hint.setFont(hint_font)
         hint.setStyleSheet("color: #888888;")

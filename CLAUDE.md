@@ -73,7 +73,7 @@ event_bus(ALARM_FIRED)    ──► DashboardScreen.fire_field_alarm()  (only wh
 event_bus(SCREEN_REQUESTED) ──► AppWindow.show_screen()
 
 AppWindow  dispatches keyPressEvent / keyReleaseEvent  ──► current Screen
-    VeCalibrationScreen.keyPressEvent():  ↑/↓ → adjust VE,  R → reset VE
+    VeCalibrationScreen.keyPressEvent():  ↑/↓ → adjust VE,  G → % dialog,  R → reset VE
     HomeScreen.keyPressEvent():           ↑/↓ → nav,  Enter → ScreenRequestedEvent via bus
     AppWindow.keyPressEvent():            ESC → go_home()
 
@@ -133,9 +133,10 @@ Keyboard events (`key_event`, `key_released`) are **not** routed through the bus
 - `base/screen.py`: `Screen (QWidget)` — base class. Provides `_subscribe(event_type, callback)` for tracked bus subscriptions; `on_deactivated()` auto-unsubscribes all.
 - `home/screen.py`: `HomeScreen` — vertical menu. `↑`/`↓` to navigate, `Enter` publishes `ScreenRequestedEvent` to bus.
 - `dashboard/screen.py`: `DashboardScreen` — full-screen numeric grid + graphs. Subscribes to `SIGNALS_RECEIVED` and `ALARM_FIRED` via bus in `on_activated()`; unsubscribes in `on_deactivated()`.
-- `ve_calibration/screen.py`: `VeCalibrationScreen` — 16×16 VE map table + heatmap + top-bar signal cells. `↑`/`↓` edits VE; `R` resets. Calls `_writer.on_adjustment_made()` directly on adjustment.
-- `ve_calibration/ve_map_state.py`: `VeMapState` — in-memory 16×16 VE map. Computes bilinear interpolation weights, tracks modified cells. Module-level singleton `ve_map_state`.
+- `ve_calibration/screen.py`: `VeCalibrationScreen` — 16×16 VE map table + heatmap + top-bar signal cells. `↑`/`↓` edits VE; `G` opens `PercentageDialog` to apply a % increment to cursor cells; `R` resets. Calls `_writer.on_adjustment_made()` directly on adjustment.
+- `ve_calibration/ve_map_state.py`: `VeMapState` — in-memory 16×16 VE map. Computes bilinear interpolation weights, tracks modified cells. `adjust_ve(rpm, map, delta)` adds a fixed delta weighted by interpolation; `adjust_ve_by_percentage(rpm, map, pct)` multiplies each cursor cell by `(1 + pct/100)`. Module-level singleton `ve_map_state`.
 - `ve_calibration/ve_write_controller.py`: `VeWriteController` — 1-second debounce; sends modified rows directly via `get_ecu_connection().send_command()`.
+- `ve_calibration/percentage_dialog.py`: `PercentageDialog` — `QDialog` modal com tema escuro. Apresenta um `QLineEdit` com `QDoubleValidator` (−100 a 100). Enter confirma, ESC cancela. Expõe `value() -> float`.
 - `components/signal_card.py`: `SignalCard` — reusable Qt widget for a labeled numeric value.
 
 **`app/alarm/`** — Limit alarms
