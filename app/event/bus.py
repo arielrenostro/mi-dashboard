@@ -13,9 +13,11 @@ _SIGNAL_ATTR: dict[AppEventType, str] = {
     AppEventType.SCREEN_REQUESTED:      "screen_requested",
     AppEventType.ECU_COMMAND_REQUESTED: "ecu_command_requested",
     AppEventType.ALARM_FIRED:           "alarm_fired",
-    AppEventType.VEHICLE_STATE_CHANGED: "vehicle_state_changed",
     AppEventType.EVENT_MARK_REQUESTED:  "event_mark_requested",
     AppEventType.SIGNALS_RECEIVED:      "signals_received",
+    AppEventType.ECU_MESS_FRAME:        "ecu_mess_frame",
+    AppEventType.ECU_COMMAND_SEND:      "ecu_command_send",
+    AppEventType.ECU_COMMAND_RESPONSE:  "ecu_command_response",
 }
 
 
@@ -23,9 +25,11 @@ class _EventBusQObject(QObject):
     screen_requested      = pyqtSignal(object)
     ecu_command_requested = pyqtSignal(object)
     alarm_fired           = pyqtSignal(object)
-    vehicle_state_changed = pyqtSignal(object)
     event_mark_requested  = pyqtSignal(object)
     signals_received      = pyqtSignal(object)
+    ecu_mess_frame        = pyqtSignal(object)
+    ecu_command_send      = pyqtSignal(object)
+    ecu_command_response  = pyqtSignal(object)
 
 
 class EventBus:

@@ -1,13 +1,10 @@
 import threading
-import time
 from typing import Optional
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from app.masterinjection.signal import ParsedSignal
 from app.state.event import VehicleStateChangeEvent, EventType
-
-ALARM_DURATION = 2
 
 
 class _VehicleStateEmitter(QObject):
@@ -20,7 +17,7 @@ class VehicleState:
         self._emitter: Optional[_VehicleStateEmitter] = None
         self._lock = threading.RLock()
         self._signals: dict = {}
-        self._alarm_timestamps: dict = {}
+        self._alarming_signals: set = set()
         self._lambda_loop_closed: bool = False
         self._rpm_breakpoints: list[int] = [0 for _ in range(16)]
         self._map_breakpoints: list[int] = [0 for _ in range(16)]
@@ -36,6 +33,9 @@ class VehicleState:
         with self._lock:
             self._signals.update(parsed_data)
 
+    def update_signals(self, event) -> None:
+        self.update(event.data)
+
     def get(self, signal) -> Optional[ParsedSignal]:
         with self._lock:
             return self._signals.get(signal)
@@ -46,18 +46,18 @@ class VehicleState:
 
     def is_alarm_firing(self, signal) -> bool:
         with self._lock:
-            last = self._alarm_timestamps.get(signal)
-            return last is not None and (time.time() - last) < ALARM_DURATION
+            return signal in self._alarming_signals
 
     def is_any_alarm_firing(self) -> bool:
         with self._lock:
-            now = time.time()
-            return any((now - t) < ALARM_DURATION for t in self._alarm_timestamps.values())
+            return len(self._alarming_signals) > 0
 
     def set_alarm(self, signal, active: bool) -> None:
         with self._lock:
             if active:
-                self._alarm_timestamps[signal] = time.time()
+                self._alarming_signals.add(signal)
+            else:
+                self._alarming_signals.discard(signal)
 
     def set_lambda_loop_state(self, is_closed: bool) -> None:
         with self._lock:

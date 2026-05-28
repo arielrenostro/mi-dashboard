@@ -18,8 +18,6 @@ from PyQt6.QtWidgets import (
 )
 
 from app.config import config
-from app.ecu_connection import get_ecu_connection
-from app.masterinjection.protocol import EcuCommand
 from app.masterinjection.signal import Signal
 from app.state.event import VehicleStateChangeEvent, EventType
 from app.state.state import vehicle_state
@@ -133,10 +131,16 @@ class VeCalibrationScreen(Screen):
         elif event.key() == Qt.Key.Key_Down:
             self._adjust_ve(-5.0)
         elif event.key() == Qt.Key.Key_O:
-            get_ecu_connection().send_command(EcuCommand.LAMBDA_LOOP_OPEN)
+            from app.ecu.commands import EcuCommand
+            from app.event.app_events import EcuCommandRequestedEvent
+            from app.event.bus import event_bus
+            event_bus.publish(EcuCommandRequestedEvent(command=EcuCommand.LAMBDA_LOOP_OPEN))
             self._player_open.play()
         elif event.key() == Qt.Key.Key_P:
-            get_ecu_connection().send_command(EcuCommand.LAMBDA_LOOP_CLOSE)
+            from app.ecu.commands import EcuCommand
+            from app.event.app_events import EcuCommandRequestedEvent
+            from app.event.bus import event_bus
+            event_bus.publish(EcuCommandRequestedEvent(command=EcuCommand.LAMBDA_LOOP_CLOSE))
             self._player_closed.play()
         elif event.key() == Qt.Key.Key_G:
             self._open_percent_dialog()

@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import logging
 import time
 from typing import Dict
 
-from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
+from PyQt6.QtCore import QObject, pyqtSignal, QUrl, Qt, QTimer
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from app.event.app_events import AppEventType, AlarmFiredEvent, SignalsReceivedEvent
@@ -13,11 +15,11 @@ from app.state.state import vehicle_state
 logger = logging.getLogger(__name__)
 
 
-class AlarmProcessor(QThread):
+class AlarmProcessor(QObject):
     _play_requested = pyqtSignal()
     _stop_requested = pyqtSignal()
 
-    def __init__(self, sound):
+    def __init__(self, sound: str):
         super().__init__()
 
         self.audio_output = QAudioOutput()
@@ -28,47 +30,30 @@ class AlarmProcessor(QThread):
         self.player.setSource(QUrl.fromLocalFile(sound))
         self.player.mediaStatusChanged.connect(self._handle_status)
 
-        # QueuedConnection: garante execução na main thread independente de qual
-        # thread emite o sinal. AlarmProcessor e player têm o mesmo thread owner
-        # (main thread), então o Qt usaria DirectConnection por padrão — o que
-        # chamaria play/stop na worker thread, violando o thread affinity do player.
         self._play_requested.connect(self.player.play, Qt.ConnectionType.QueuedConnection)
         self._stop_requested.connect(self.player.stop, Qt.ConnectionType.QueuedConnection)
 
         self._alarm_until: Dict[Signal, float] = {}
+        self._is_playing = False
 
         event_bus.subscribe(AppEventType.SIGNALS_RECEIVED, self._on_signals_received)
 
-        self.running = True
+    def start(self) -> None:
+        pass  # no thread to start
 
-    def _on_signals_received(self, event: SignalsReceivedEvent):
+    def stop(self) -> None:
+        self._stop_requested.emit()
+
+    def _on_signals_received(self, event: SignalsReceivedEvent) -> None:
         self.process_signals(event.data)
 
-    def run(self):
-        is_playing = False
-        while self.running:
-            try:
-                should_play = vehicle_state.is_any_alarm_firing()
-                if should_play and not is_playing:
-                    self._play_requested.emit()
-                    is_playing = True
-                elif not should_play and is_playing:
-                    self._stop_requested.emit()
-                    is_playing = False
-            except Exception:
-                logger.exception("Erro no loop do AlarmProcessor")
-            self.msleep(100)
-
-    def stop(self):
-        self._stop_requested.emit()
-        self.running = False
-
-    def process_signals(self, signals: Dict[Signal, ParsedSignal]):
+    def process_signals(self, signals: Dict[Signal, ParsedSignal]) -> None:
         now = time.time()
         for signal, data in signals.items():
-            alarm = signal.value["alarm"]
+            alarm = signal.value.get("alarm")
+            if not alarm:
+                continue
             duration = alarm.get("duration_s", 2.0)
-
             in_alarm = self._check_in_alarm(alarm, data)
             vehicle_state.set_alarm(signal, in_alarm)
 
@@ -81,19 +66,32 @@ class AlarmProcessor(QThread):
             else:
                 self._alarm_until.pop(signal, None)
 
+        self._update_audio()
+
+    def _update_audio(self) -> None:
+        should_play = vehicle_state.is_any_alarm_firing()
+        if should_play and not self._is_playing:
+            self._play_requested.emit()
+            self._is_playing = True
+        elif not should_play and self._is_playing:
+            self._stop_requested.emit()
+            self._is_playing = False
+
     @staticmethod
     def _check_in_alarm(alarm: dict, data: ParsedSignal) -> bool:
+        if not alarm.get("enabled", False):
+            return False
         min_ = alarm["min"] if alarm["min"] is None or isinstance(alarm["min"], (int, float)) else alarm["min"](data.value)
         max_ = alarm["max"] if alarm["max"] is None or isinstance(alarm["max"], (int, float)) else alarm["max"](data.value)
-
         if min_ is not None and data.value < min_:
-            return alarm["enabled"]
+            return True
         if max_ is not None and data.value > max_:
-            return alarm["enabled"]
+            return True
         return False
 
-    def _handle_status(self, status):
-        # chamado na main thread (affinity do player) — player.play() é seguro aqui
+    def _handle_status(self, status) -> None:
         if status == QMediaPlayer.MediaStatus.EndOfMedia:
             if vehicle_state.is_any_alarm_firing():
                 self.player.play()
+            else:
+                self._is_playing = False
