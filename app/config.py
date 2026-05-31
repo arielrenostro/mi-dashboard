@@ -14,7 +14,8 @@ class AppConfigDashboard:
             ["RPM", "VSS", "MAP", "BOOST", "CLT", "IAT", "POWER"],
             ["LAMBDA", "LAMBDA_TARGET", "FUEL_TRIM", "BOOST_TARGET", "INJ_UTIL", "IGN", "TORQUE"]
         ])
-        self.graph_x_size: int = config_dict.get('graph_x_size', 150)
+        self.graph_x_seconds: int = config_dict.get('graph_x_seconds', 30)
+        self.graph_x_size: int = self.graph_x_seconds * 60
 
 
 class AppConfigAlarm:

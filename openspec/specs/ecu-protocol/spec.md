@@ -7,23 +7,20 @@ The system SHALL connect via Bluetooth serial (Windows COM port) with these defa
 - **WHEN** `config.json` specifies `connection.port = "COM5"`
 - **THEN** the serial connection SHALL open on `COM5`
 
-### Requirement: Frame format is a semicolon-delimited joined string
-The ECU streams two frame types per cycle: `#D01;<v1>;<v2>;...` and `#D02;<v1>;<v2>;...`. The connection layer MUST wait for exactly one `#D01` and one `#D02` per cycle, join them as `#D01;...;#D02;...`, and emit the combined string. Signal indices in the signals spec refer to absolute positions in this joined string.
-
-#### Scenario: Joined frame is emitted after both halves arrive
-- **WHEN** a `#D01` line and a `#D02` line have both been buffered
-- **THEN** the system SHALL emit `"{d01};{d02}"` and clear both buffers
-
 ### Requirement: Connection follows a handshake sequence before streaming
 The system SHALL follow this sequence on connect:
-1. Open serial port
-2. Send `#D50` (ECU_INFO); retry every 3 attempts until response starting with `#D50` is received
-3. Send `#D01` (STREAMING_START); retry every 3 attempts until response starting with `#D01`, `#D02`, or `#D03`
-4. Enter read loop
+1. `EcuTransport.open()`
+2. `EcuProtocol` sends `#D50` (ECU_INFO); retries every 3 attempts until response starting with `#D50` is received
+3. Publishes `EcuHandshakeCompletedEvent` on the event bus
+4. Enters read loop — does NOT send `#D01` here; streaming is started by `VehicleState` setup thread
 
-#### Scenario: Handshake completes successfully
+#### Scenario: Handshake completes and enters read loop without streaming
 - **WHEN** the ECU responds to `#D50` with a line starting with `#D50`
-- **THEN** the system SHALL proceed to send `#D01` to start streaming
+- **THEN** `EcuProtocol` SHALL publish `EcuHandshakeCompletedEvent` and enter the read loop without sending `#D01`
+
+#### Scenario: Streaming starts after VehicleState setup thread calls start_streaming
+- **WHEN** VehicleState setup thread calls `protocol.start_streaming()`
+- **THEN** `EcuProtocol` SHALL send `#D01\n`, wait for the streaming ack response, and return `StreamingAckResponse`
 
 ### Requirement: Read loop reconnects after three consecutive empty reads
 In the read loop, if three consecutive `readline()` calls return empty strings, the connection MUST close and restart from step 1 of the handshake sequence.
@@ -32,20 +29,27 @@ In the read loop, if three consecutive `readline()` calls return empty strings, 
 - **WHEN** three consecutive readline calls return empty strings
 - **THEN** the system SHALL close the port and restart the handshake sequence
 
-### Requirement: Commands are enqueued and drained after each complete frame
-`send_command(cmd)` MUST be thread-safe via an internal `queue.Queue`. Commands are drained after each complete `#D01 + #D02` pair is emitted, never mid-frame. Multiple commands in the queue are sent in FIFO order. Commands are sent as `"{cmd}\n"` in UTF-8.
+### Requirement: EcuProtocol read loop routes lines by prefix
+The read loop in `EcuProtocol` SHALL classify each line received from `EcuTransport.read_line()`:
+- Lines starting with `#D01`, `#D02`, or `#D03`: publish `EcuFrameReceivedEvent` immediately
+- Lines matching the active `_pending` prefix: deliver to the blocked `send_and_wait` caller via `threading.Event`
+- Other lines: log and discard
 
-#### Scenario: Command is sent after frame completion
-- **WHEN** a command is enqueued and the next complete frame is emitted
-- **THEN** the command SHALL be sent to the serial port before the next read cycle begins
+#### Scenario: D01 and D02 are routed to frame events independently
+- **WHEN** the read loop receives `#D01;...`
+- **THEN** SHALL publish `EcuFrameReceivedEvent(D01, values)` without waiting for `#D02`
 
-#### Scenario: Command queue is FIFO
-- **WHEN** two commands are enqueued in order A then B
-- **THEN** command A SHALL be sent before command B
+#### Scenario: Command response is routed to the pending caller
+- **WHEN** the read loop receives a line starting with the active `_pending` prefix (e.g., `#F01`)
+- **THEN** SHALL deliver the line to `_send_and_wait` caller and set `_pending = None`
 
-### Requirement: Mock mode replays a CSV log file
-When configured, `EcuConnectionMock` MUST replace `EcuConnectionSerial`. It SHALL replay rows from a recorded CSV log file, pacing emissions using the `Timestamp` column when available. `send_command()` is a no-op. The emitted format MUST be identical to the real connection (`#D01;...;#D02;...`).
+### Requirement: _write_lock serializes concurrent send_and_wait callers
+`EcuProtocol` SHALL maintain a single `_write_lock: threading.Lock`. Any caller of `_send_and_wait` MUST acquire this lock before writing. The lock is released immediately after writing — it does NOT block while waiting for the response.
 
-#### Scenario: Mock emits same format as real connection
-- **WHEN** mock mode is active and a log row is replayed
-- **THEN** the emitted string SHALL have the same `#D01;...;#D02;...` format as a real frame
+#### Scenario: Two concurrent callers are serialized
+- **WHEN** VehicleState setup thread and VeWriteController call protocol methods concurrently
+- **THEN** the second caller SHALL block on `_write_lock` until the first caller's `send_and_wait` completes and the lock is released
+
+#### Scenario: Write and read loop are parallel
+- **WHEN** a caller holds `_write_lock` and writes to the transport
+- **THEN** the ECU thread read loop SHALL continue calling `transport.read_line()` without interruption

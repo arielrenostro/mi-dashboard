@@ -16,7 +16,7 @@
     "path": "C:\\Users\\ariel\\OneDrive\\Carros\\206\\Master Injection\\Datalogs\\dash"
   },
   "dashboard": {
-    "graph_x_size": 150,
+    "graph_x_seconds": 30,
     "graph": [
       [
         "LAMBDA",

@@ -2,8 +2,6 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QWidget, QStackedWidget
 
 from app.config import config
-from app.event.app_events import AppEventType
-from app.event.bus import event_bus
 from app.masterinjection.signal_processor import SignalProcessor
 from app.ui.dashboard.screen import DashboardScreen
 from app.ui.home.screen import HomeScreen
@@ -28,9 +26,6 @@ class AppWindow(QWidget):
 
         self._register_screens()
 
-        event_bus.subscribe(AppEventType.SCREEN_REQUESTED,
-                            lambda e: self.show_screen(e.screen_name))
-
         self.showFullScreen()
         self.show_screen("home")
 
@@ -43,7 +38,7 @@ class AppWindow(QWidget):
             close_fn=lambda: self.show_screen("home"),
             grid=config.dashboard.grid,
             graphs=config.dashboard.graph,
-            graph_x_size=config.dashboard.graph_x_size,
+            graph_x_seconds=config.dashboard.graph_x_seconds,
         )
 
         self._register_screen("home", home_screen)
@@ -53,6 +48,7 @@ class AppWindow(QWidget):
     def _register_screen(self, name: str, screen):
         self._screens[name] = screen
         self.stacked_widget.addWidget(screen)
+        screen.screen_requested.connect(self.show_screen)
 
     def _create_layout(self):
         from PyQt6.QtWidgets import QVBoxLayout
@@ -76,13 +72,11 @@ class AppWindow(QWidget):
         new_screen.on_activated()
 
     def keyPressEvent(self, event):
-        """Handle key press events."""
         self._screens[self._current_screen_name].keyPressEvent(event)
         self.key_event.emit(event.key())
         super().keyPressEvent(event)
 
     def keyReleaseEvent(self, event):
-        """Handle key release events."""
         self._screens[self._current_screen_name].keyReleaseEvent(event)
         self.key_released.emit(event.key())
         super().keyReleaseEvent(event)

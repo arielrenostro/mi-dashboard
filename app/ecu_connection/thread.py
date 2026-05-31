@@ -1,26 +1,20 @@
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import QThread
 
-from app.ecu_connection import EcuConnection
+from app.ecu_connection.ecu_protocol import EcuProtocol
 
 
 class EcuConnectionThread(QThread):
-    emitter = pyqtSignal(str)
 
-    def __init__(self, ecu_connection: EcuConnection):
+    def __init__(self, protocol: EcuProtocol):
         super().__init__()
-        self.ecu_connection = ecu_connection
-        self.ecu_connection.emitter = self.emitter
-        self.running = False
+        self.protocol = protocol
 
     def start(self, **kwargs):
         super().start(**kwargs)
-        self.ecu_connection.start()
-        self.running = True
+        self.protocol.start()
 
     def stop(self):
-        self.ecu_connection.stop()
-        self.running = False
+        self.protocol.stop()
 
     def run(self):
-        while self.running:
-            self.ecu_connection.run()
+        self.protocol.run()

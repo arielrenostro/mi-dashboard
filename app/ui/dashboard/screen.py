@@ -21,8 +21,10 @@ logger = logging.getLogger(__name__)
 
 class DashboardScreen(Screen):
 
-    def __init__(self, close_fn, grid, graphs, graph_x_size):
+    def __init__(self, close_fn, grid, graphs, graph_x_seconds):
         super().__init__(close_fn)
+        self.graph_x_seconds = graph_x_seconds
+        graph_x_size = graph_x_seconds * 60
 
         self.layout = QVBoxLayout()
         self.layout.setContentsMargins(0, 0, 0, 0)
@@ -38,6 +40,8 @@ class DashboardScreen(Screen):
 
         self.curves = {}
         self.buffers = {}
+        self.timestamps = {}
+        self.base_views = {}
         self.peak_markers = {}
         self.peak_labels = {}
         self.min_markers = {}
@@ -48,8 +52,8 @@ class DashboardScreen(Screen):
         self.timer.timeout.connect(self.update_graph)
 
     def on_activated(self):
-        self.timer.start(100)
-        self._subscribe(AppEventType.SIGNALS_RECEIVED, lambda e: self.on_signal_received(e.data))
+        self.timer.start(50)
+        self._subscribe(AppEventType.SIGNALS_RECEIVED, lambda e: self.on_signal_received(e))
         self._subscribe(AppEventType.ALARM_FIRED, lambda e: self.fire_field_alarm(e.signal))
 
     def on_deactivated(self):
@@ -124,11 +128,7 @@ class DashboardScreen(Screen):
 
                 view_box.addItem(curve)
 
-                curve.getViewBox().setXRange(
-                    0,
-                    graph_x_size + 1,
-                    padding=0
-                )
+                self.base_views[signal] = base_view
 
                 for markers, labels in [
                     (self.peak_markers, self.peak_labels),
@@ -156,9 +156,13 @@ class DashboardScreen(Screen):
 
                 self.curves[signal] = curve
                 self.buffers[signal] = deque(maxlen=graph_x_size)
+                self.timestamps[signal] = deque(maxlen=graph_x_size)
 
-    @Slot(dict)
-    def on_signal_received(self, parsed_data: Dict[Signal, ParsedSignal]):
+    @Slot(object)
+    def on_signal_received(self, event):
+        parsed_data = event.data
+        t = event.timestamp
+
         for signal in self.labels.keys():
             try:
                 data = parsed_data.get(signal)
@@ -171,6 +175,7 @@ class DashboardScreen(Screen):
             data = parsed_data.get(signal)
             if data:
                 buff.append(data.value)
+                self.timestamps[signal].append(t)
 
     def update_display(self, signal: Signal, data: ParsedSignal):
         value = data.value
@@ -199,19 +204,24 @@ class DashboardScreen(Screen):
 
     def update_graph(self):
         for signal, curve in self.curves.items():
-            data = list(self.buffers[signal])
-            curve.setData(data)
+            ts = list(self.timestamps[signal])
+            ys = list(self.buffers[signal])
+            curve.setData(ts, ys)
+
+            if ts:
+                self.base_views[signal].setXRange(ts[-1] - self.graph_x_seconds, ts[-1], padding=0)
 
             for markers, labels, fn_value in [
                 (self.peak_markers, self.peak_labels, max),
                 (self.min_markers, self.min_labels, min),
             ]:
-                if len(data) > 0:
-                    value = fn_value(data)
-                    value_index = data.index(value)
+                if ys:
+                    value = fn_value(ys)
+                    value_index = ys.index(value)
+                    t_at_peak = ts[value_index]
 
                     markers[signal].setData(
-                        [value_index],
+                        [t_at_peak],
                         [value],
                     )
 
@@ -221,7 +231,7 @@ class DashboardScreen(Screen):
                         label_text = f"{label_text} {unit}"
 
                     labels[signal].setText(label_text)
-                    labels[signal].setPos(value_index, value)
+                    labels[signal].setPos(t_at_peak, value)
 
                     markers[signal].show()
                     labels[signal].show()

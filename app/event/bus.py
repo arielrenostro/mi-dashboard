@@ -10,22 +10,24 @@ from app.event.app_events import AppEvent, AppEventType
 logger = logging.getLogger(__name__)
 
 _SIGNAL_ATTR: dict[AppEventType, str] = {
-    AppEventType.SCREEN_REQUESTED:      "screen_requested",
-    AppEventType.ECU_COMMAND_REQUESTED: "ecu_command_requested",
-    AppEventType.ALARM_FIRED:           "alarm_fired",
-    AppEventType.VEHICLE_STATE_CHANGED: "vehicle_state_changed",
-    AppEventType.EVENT_MARK_REQUESTED:  "event_mark_requested",
-    AppEventType.SIGNALS_RECEIVED:      "signals_received",
+    AppEventType.ECU_FRAME_RECEIVED:      "ecu_frame_received",
+    AppEventType.ECU_HANDSHAKE_COMPLETED: "ecu_handshake_completed",
+    AppEventType.ECU_RESPONSE_RECEIVED:   "ecu_response_received",
+    AppEventType.ALARM_FIRED:             "alarm_fired",
+    AppEventType.VEHICLE_STATE_CHANGED:   "vehicle_state_changed",
+    AppEventType.EVENT_MARK_REQUESTED:    "event_mark_requested",
+    AppEventType.SIGNALS_RECEIVED:        "signals_received",
 }
 
 
 class _EventBusQObject(QObject):
-    screen_requested      = pyqtSignal(object)
-    ecu_command_requested = pyqtSignal(object)
-    alarm_fired           = pyqtSignal(object)
-    vehicle_state_changed = pyqtSignal(object)
-    event_mark_requested  = pyqtSignal(object)
-    signals_received      = pyqtSignal(object)
+    ecu_frame_received      = pyqtSignal(object)
+    ecu_handshake_completed = pyqtSignal(object)
+    ecu_response_received   = pyqtSignal(object)
+    alarm_fired             = pyqtSignal(object)
+    vehicle_state_changed   = pyqtSignal(object)
+    event_mark_requested    = pyqtSignal(object)
+    signals_received        = pyqtSignal(object)
 
 
 class EventBus:

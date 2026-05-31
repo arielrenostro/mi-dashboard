@@ -3,9 +3,6 @@ import logging
 from PyQt6.QtCore import QObject, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
-from app.event.app_events import EcuCommandRequestedEvent
-from app.event.bus import event_bus
-from app.masterinjection.protocol import EcuCommand
 from app.state.state import vehicle_state
 
 logger = logging.getLogger(__name__)
@@ -25,8 +22,8 @@ class LambdaToggle(QObject):
         self._player.stop()
         self._player.play()
         if vehicle_state.is_lambda_loop_closed():
-            cmd = EcuCommand.LAMBDA_LOOP_OPEN
+            logger.info("Alternando lambda loop: OPEN")
+            vehicle_state.open_lambda_loop()
         else:
-            cmd = EcuCommand.LAMBDA_LOOP_CLOSE
-        logger.info("Alternando lambda loop: %s", cmd.description)
-        event_bus.publish(EcuCommandRequestedEvent(command=cmd))
+            logger.info("Alternando lambda loop: CLOSE")
+            vehicle_state.close_lambda_loop()

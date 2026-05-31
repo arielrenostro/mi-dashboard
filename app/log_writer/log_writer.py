@@ -5,7 +5,8 @@ import time
 from PyQt6.QtCore import QThread, QObject
 from pyqtgraph.Qt.QtCore import Slot, Signal
 
-from app.masterinjection.protocol import EcuResponse
+from app.event.app_events import AppEventType, EcuFrameReceivedEvent, EcuFrameType
+from app.event.bus import event_bus
 
 
 class Worker(QObject):
@@ -44,16 +45,17 @@ class LogWriter(QObject):
         self.task.connect(self.worker.process_task)
         self.thread.start()
 
+        event_bus.subscribe(AppEventType.ECU_FRAME_RECEIVED, self._on_frame_received)
+
     def set_event_pending(self):
         self._event_pending = True
 
-    def write(self, line):
-        if not line.startswith(EcuResponse.MESS_DATA_1.value):
-            return
-        parts = line.split(";")
-        if len(parts) < 2:
+    def _on_frame_received(self, event: EcuFrameReceivedEvent) -> None:
+        if event.frame_type != EcuFrameType.D01:
             return
         timestamp = int(time.time() * 1000)
-        event = "MARK" if self._event_pending else ""
+        event_label = "MARK" if self._event_pending else ""
         self._event_pending = False
-        self.task.emit([timestamp, event] + parts)
+        # Reconstruct the D01 line: ["#D01"] + values
+        parts = ["#D01"] + list(event.values)
+        self.task.emit([timestamp, event_label] + parts)

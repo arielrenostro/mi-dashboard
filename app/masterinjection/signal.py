@@ -1,10 +1,14 @@
 import enum
 from typing import Any
 
+from app.event.app_events import EcuFrameType
+
 
 class Signal(enum.Enum):
+    # ── D01 signals (frame indices are relative to D01 frame, 1-based) ──────
     RPM = {
         "name": "RPM",
+        "frame": EcuFrameType.D01,
         "index": 1,
         "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
@@ -21,6 +25,7 @@ class Signal(enum.Enum):
 
     MAP = {
         "name": "MAP",
+        "frame": EcuFrameType.D01,
         "index": 2,
         "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
@@ -37,6 +42,7 @@ class Signal(enum.Enum):
 
     BOOST = {
         "name": "Boost",
+        "frame": EcuFrameType.D01,
         "index": 3,
         "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
@@ -53,6 +59,7 @@ class Signal(enum.Enum):
 
     LAMBDA = {
         "name": "λ",
+        "frame": EcuFrameType.D01,
         "index": 6,
         "converter": lambda x: float(x) / 1000,
         "for_label": lambda x: f'{x:.2f}',
@@ -69,6 +76,7 @@ class Signal(enum.Enum):
 
     INJ_UTIL = {
         "name": "Inj. Duty",
+        "frame": EcuFrameType.D01,
         "index": 8,
         "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
@@ -85,6 +93,7 @@ class Signal(enum.Enum):
 
     VE = {
         "name": "VE",
+        "frame": EcuFrameType.D01,
         "index": 9,
         "converter": lambda x: float(x) / 10,
         "for_label": lambda x: f'{x:.1f}',
@@ -101,6 +110,7 @@ class Signal(enum.Enum):
 
     IGN = {
         "name": "Ign",
+        "frame": EcuFrameType.D01,
         "index": 10,
         "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
@@ -115,9 +125,14 @@ class Signal(enum.Enum):
         },
     }
 
+    # ── D02 signals (frame indices are relative to D02 frame, 1-based) ──────
+    # D02 relative index = original joined-string index - 17
+    # (D01 has 16 values at joined positions 1-16; #D02 marker is at position 17)
+
     CLT = {
         "name": "CLT",
-        "index": 19,
+        "frame": EcuFrameType.D02,
+        "index": 2,   # joined index was 19; 19 - 17 = 2
         "converter": lambda x: int(x) - 273,
         "for_label": lambda x: f'{x}',
         "unit": "ºC",
@@ -133,7 +148,8 @@ class Signal(enum.Enum):
 
     IAT = {
         "name": "IAT",
-        "index": 20,
+        "frame": EcuFrameType.D02,
+        "index": 3,   # joined index was 20; 20 - 17 = 3
         "converter": lambda x: int(x) - 273,
         "for_label": lambda x: f'{x}',
         "unit": "ºC",
@@ -149,7 +165,8 @@ class Signal(enum.Enum):
 
     VSS = {
         "name": "Speed",
-        "index": 23,
+        "frame": EcuFrameType.D02,
+        "index": 6,   # joined index was 23; 23 - 17 = 6
         "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
         "unit": "km/h",
@@ -165,7 +182,8 @@ class Signal(enum.Enum):
 
     LAMBDA_LOOP = {
         "name": "λ Loop",
-        "index": 24,
+        "frame": EcuFrameType.D02,
+        "index": 7,   # joined index was 24; 24 - 17 = 7
         "converter": lambda x: int(x),
         "for_label": lambda x: 'Closed' if x == 1 else 'Open',
         "unit": "",
@@ -181,7 +199,8 @@ class Signal(enum.Enum):
 
     LAMBDA_TARGET = {
         "name": "λ Target",
-        "index": 25,
+        "frame": EcuFrameType.D02,
+        "index": 8,   # joined index was 25; 25 - 17 = 8
         "converter": lambda x: float(x) / 1000,
         "for_label": lambda x: f'{x:.2f}',
         "unit": "λ",
@@ -197,7 +216,8 @@ class Signal(enum.Enum):
 
     FUEL_TRIM = {
         "name": "Fuel Trim",
-        "index": 26,
+        "frame": EcuFrameType.D02,
+        "index": 9,   # joined index was 26; 26 - 17 = 9
         "converter": lambda x: (float(x) - 1000) / 10,
         "for_label": lambda x: f'{x:.1f}',
         "unit": "%",
@@ -213,7 +233,8 @@ class Signal(enum.Enum):
 
     BOOST_TARGET = {
         "name": "Boost Target",
-        "index": 28,
+        "frame": EcuFrameType.D02,
+        "index": 11,  # joined index was 28; 28 - 17 = 11
         "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
         "unit": "kPa",
@@ -229,7 +250,8 @@ class Signal(enum.Enum):
 
     PEDAL = {
         "name": "Pedal",
-        "index": 29,
+        "frame": EcuFrameType.D02,
+        "index": 12,  # joined index was 29; 29 - 17 = 12
         "converter": lambda x: min(100.00, (float(x) / 990.0) * 100.0),
         "for_label": lambda x: f'{x:.1f}',
         "unit": "%",
@@ -245,7 +267,8 @@ class Signal(enum.Enum):
 
     GEAR = {
         "name": "Gear",
-        "index": 33,
+        "frame": EcuFrameType.D02,
+        "index": 16,  # joined index was 33; 33 - 17 = 16
         "converter": lambda x: int(x),
         "for_label": lambda x: f'{x}',
         "unit": "",
@@ -259,8 +282,11 @@ class Signal(enum.Enum):
         },
     }
 
+    # ── Calculated signals (depend on D01 + D02 signals above) ──────────────
+
     VE_LAMBDA = {
         "name": "VE λ",
+        "frame": None,
         "calculated": True,
         "value": lambda x: (
             int(x[Signal.LAMBDA].raw) + int(x[Signal.FUEL_TRIM].raw) - int(x[Signal.LAMBDA_TARGET].raw)
@@ -279,6 +305,7 @@ class Signal(enum.Enum):
 
     POWER = {
         "name": "Power",
+        "frame": None,
         "calculated": True,
         "value": lambda x:
         (((x[Signal.MAP].value * x[Signal.VE].value * 10 * 0.001587 * x[Signal.RPM].value)
@@ -298,6 +325,7 @@ class Signal(enum.Enum):
 
     TORQUE = {
         "name": "Torque",
+        "frame": None,
         "calculated": True,
         "value": lambda x: (x[Signal.POWER].value * 716.2) / max(x[Signal.RPM].value, 1),
         "for_label": lambda x: f'{x:.1f}',

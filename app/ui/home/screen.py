@@ -5,10 +5,8 @@ from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QVBoxLayout, QLabel, QWidget, QHBoxLayout
 
 from app.config import config
-from app.ecu_connection import get_ecu_connection
-from app.ecu_connection.ecu_connection import EcuConnectionStatus
-from app.event.app_events import ScreenRequestedEvent
-from app.event.bus import event_bus
+from app.ecu_connection import get_ecu_protocol
+from app.ecu_connection.ecu_protocol import EcuConnectionStatus
 from app.ui.base.screen import Screen
 
 
@@ -68,7 +66,7 @@ class HomeScreen(Screen):
         layout.addWidget(status_container, alignment=Qt.AlignmentFlag.AlignCenter)
 
         def _update_status():
-            status = get_ecu_connection().get_connection_status()
+            status = get_ecu_protocol().get_connection_status()
             if status == EcuConnectionStatus.CONNECTED:
                 status_label.setText("Connected")
                 status_dot.setStyleSheet("background-color: #2ecc71; border-radius: 6px;")
@@ -164,6 +162,6 @@ class HomeScreen(Screen):
             self._update_selection_ui()
         elif event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
             _, screen_name = self._menu_items[self._selected]
-            event_bus.publish(ScreenRequestedEvent(screen_name=screen_name))
+            self.screen_requested.emit(screen_name)
         else:
             super().keyPressEvent(event)
