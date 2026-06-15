@@ -48,7 +48,7 @@ class VeWriteController(QObject):
             values = ve_map_state.get_row_raw_values(row)
             logger.debug("Enviando VE row %d: %s", row + 1, values)
             ve_map_state.mark_row_sent(row)
-            vehicle_state.write_ve_row(row + 1, values)
+            vehicle_state.write_ve_row(row, values)
 
         self._player.stop()
         self._player.play()
