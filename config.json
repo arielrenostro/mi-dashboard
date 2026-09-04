@@ -8,7 +8,7 @@
     "open_sound": "open.wav"
   },
   "connection": {
-    "mock": "C:\\Users\\ariel\\OneDrive\\Carros\\206\\Master Injection\\Datalogs\\4Bar - 9\\log_stream_fixed.csv",
+    "mock_": "C:\\Users\\ariel\\OneDrive\\Carros\\206\\Master Injection\\Datalogs\\4Bar - 9\\log_stream_fixed.csv",
     "port": "COM1",
     "baudrate": 115200
   },
@@ -44,7 +44,7 @@
         "LAMBDA",
         "LAMBDA_TARGET",
         "FUEL_TRIM",
-        "BOOST_TARGET",
+        "OIL_PRESSURE",
         "INJ_UTIL",
         "IGN",
         "TORQUE"

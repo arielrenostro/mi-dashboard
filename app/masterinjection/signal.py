@@ -115,6 +115,22 @@ class Signal(enum.Enum):
         },
     }
 
+    OIL_PRESSURE = {
+        "name": "Oil Pressure",
+        "index": 16,
+        "converter": lambda x: float(x) / 100.0,
+        "for_label": lambda x: f'{x:.2f}',
+        "unit": "Bar",
+        "min": 0,
+        "max": 10,
+        "color": "lime",
+        "alarm": {
+            "enabled": False,
+            "min": 0,
+            "max": 40,
+        },
+    }
+
     CLT = {
         "name": "CLT",
         "index": 19,

@@ -137,12 +137,12 @@ class EcuConnectionSerial(EcuConnection):
 
     def _fetch_ve_map(self):
         logger.debug("Obtendo VE map...")
-        for i in range(1, 16):
-            cmd = EcuCommand[f"VE_ROW_{i}"]
-            resp = self._send_and_retry(cmd, [EcuResponse[f"VE_ROW_{i}"]])
+        for i in range(16):
+            cmd = EcuCommand[f"VE_ROW_{i+1}"]
+            resp = self._send_and_retry(cmd, [EcuResponse[f"VE_ROW_{i+1}"]])
             if resp and len(resp) > 0:
                 ve_line = list(map(lambda x: int(x), resp.split(";")[1:]))
-                vehicle_state.set_ve_map(ve_line, i-1)
+                vehicle_state.set_ve_map(ve_line, i)
         ve_map = vehicle_state.get_ve_map()
         for i, ve_line in reversed(list(enumerate(ve_map))):
             logger.info(f"Fuel Map: {i} {ve_line}")
