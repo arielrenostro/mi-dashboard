@@ -105,3 +105,29 @@ def test_dashboard_receives_frames_from_the_signal_processor(window, processor):
     from app.masterinjection.signal import Signal
 
     assert window._screens["dashboard"].labels[Signal.RPM].big_label.text() == "3415"
+
+
+def test_escape_on_home_closes_the_window(window):
+    """Scenario: Exit from Home (through the real close callback)."""
+    window.close = Mock()
+
+    window.keyPressEvent(key_press(Qt.Key.Key_Escape))
+
+    window.close.assert_called_once()
+
+
+def test_held_escape_does_not_exit_after_returning_to_home(window):
+    """Scenario: Held ESC after returning to Home."""
+    window.close = Mock()
+    window.show_screen("dashboard")
+
+    window.keyPressEvent(key_press(Qt.Key.Key_Escape))  # leaves the Dashboard
+    assert window._current_screen_name == "home"
+    for _ in range(5):
+        window.keyPressEvent(key_press(Qt.Key.Key_Escape, auto_repeat=True))  # the user is still holding it
+
+    window.close.assert_not_called()
+
+    window.keyPressEvent(key_press(Qt.Key.Key_Escape))  # a fresh press
+
+    window.close.assert_called_once()

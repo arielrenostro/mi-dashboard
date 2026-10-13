@@ -164,5 +164,7 @@ class HomeScreen(Screen):
         elif event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
             _, screen_name = self._menu_items[self._selected]
             self.screen_requested.emit(screen_name)
+        elif event.key() == Qt.Key.Key_Escape:
+            self.close_fn()
         else:
             super().keyPressEvent(event)

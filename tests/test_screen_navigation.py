@@ -1,5 +1,6 @@
 """Spec: openspec/specs/screen-navigation (Home screen, connection status, screen lifecycle)."""
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from PyQt6.QtCore import Qt
@@ -20,6 +21,7 @@ def make_config(mock="", port="COM3", baudrate=115200):
 def home(qapp, monkeypatch):
     monkeypatch.setattr(home_module, "config", make_config())
     screen = HomeScreen(close_fn=lambda: None)
+    screen.close_fn = Mock()
     screen.requested = []
     screen.screen_requested.connect(screen.requested.append)
     return screen
@@ -87,6 +89,29 @@ def test_auto_repeat_is_ignored(home):
     home.keyPressEvent(key_press(Qt.Key.Key_Down))
     for _ in range(5):
         home.keyPressEvent(key_press(Qt.Key.Key_Down, auto_repeat=True))
+    home.keyPressEvent(key_press(Qt.Key.Key_Return))
+
+    assert home.requested == ["ve_calibration"]
+
+
+def test_escape_on_home_closes_the_app(home):
+    """Scenario: Exit from Home."""
+    home.keyPressEvent(key_press(Qt.Key.Key_Escape))
+
+    home.close_fn.assert_called_once()
+    assert home.requested == []
+
+
+def test_auto_repeat_escape_does_not_close_the_app(home):
+    """Requirement: Exit with ESC on Home (auto-repeat is ignored)."""
+    home.keyPressEvent(key_press(Qt.Key.Key_Escape, auto_repeat=True))
+
+    home.close_fn.assert_not_called()
+
+
+def test_escape_does_not_disturb_the_menu_selection(home):
+    home.keyPressEvent(key_press(Qt.Key.Key_Down))
+    home.keyPressEvent(key_press(Qt.Key.Key_Escape))
     home.keyPressEvent(key_press(Qt.Key.Key_Return))
 
     assert home.requested == ["ve_calibration"]
