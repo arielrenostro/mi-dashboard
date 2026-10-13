@@ -179,3 +179,5 @@ cython_debug/
 config.*.json
 
 datalog/**
+# Local WSL test environment
+.venv-wsl/
