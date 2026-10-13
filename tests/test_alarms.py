@@ -1,4 +1,5 @@
 """Spec: openspec/specs/alarms."""
+import time
 from unittest.mock import Mock
 
 import pytest
@@ -187,3 +188,59 @@ def test_other_media_statuses_do_not_restart_the_sound(alarm, monkeypatch):
     alarm._handle_status(QMediaPlayer.MediaStatus.LoadedMedia)
 
     alarm.player.play.assert_not_called()
+
+
+# --------------------------------------------------------------------- shutdown
+
+@pytest.fixture
+def running_alarm(qapp, request):
+    """A real alarm thread that is always joined, even when the test fails."""
+    processor = AlarmProcessor("does-not-exist.wav")
+    processor.player = Mock()
+
+    def cleanup():
+        processor.running = False
+        processor.wait(2000)
+
+    request.addfinalizer(cleanup)
+    processor.start()
+    deadline = time.time() + 2
+    while not processor.isRunning() and time.time() < deadline:
+        time.sleep(0.005)
+    return processor
+
+
+def test_stop_finishes_the_alarm_thread_and_stops_the_sound(running_alarm):
+    """Scenario: Exit while an alarm is sounding."""
+    running_alarm.stop()
+
+    assert not running_alarm.isRunning()
+    running_alarm.player.stop.assert_called()
+
+
+def test_stop_stops_the_polling_loop(running_alarm):
+    """Scenario: Exit with no alarm."""
+    running_alarm.stop()
+
+    assert running_alarm.running is False
+
+
+def test_stop_without_start_is_harmless(alarm):
+    alarm.player = Mock()
+
+    alarm.stop()
+
+    assert not alarm.isRunning()
+
+
+def test_the_alarm_wait_is_bounded_to_one_second(alarm):
+    """Requirement: Bounded waiting (1 second for the alarm)."""
+    alarm.player = Mock()
+    alarm.isRunning = Mock(return_value=True)
+    alarm.wait = Mock(return_value=False)
+    alarm.terminate = Mock()
+
+    alarm.stop()
+
+    alarm.wait.assert_any_call(1000)
+    alarm.terminate.assert_called_once()

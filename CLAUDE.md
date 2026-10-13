@@ -48,7 +48,7 @@ python3 -m venv .venv-wsl
 
 ## Specifications (OpenSpec)
 
-`openspec/specs/` is the source of truth for what the system does. There is one folder per capability (`ecu-connection`, `ecu-protocol`, `signal-model`, `vehicle-state`, `alarms`, `dashboard`, `screen-navigation`, `ve-map-model`, `ve-calibration-screen`, `ve-write`, `datalog`, `lambda-loop-control`, `app-configuration`). Read the relevant spec before changing behavior.
+`openspec/specs/` is the source of truth for what the system does. There is one folder per capability (`ecu-connection`, `ecu-protocol`, `signal-model`, `vehicle-state`, `alarms`, `dashboard`, `screen-navigation`, `ve-map-model`, `ve-calibration-screen`, `ve-write`, `datalog`, `lambda-loop-control`, `app-configuration`, `app-lifecycle`). Read the relevant spec before changing behavior.
 
 - Behavior changes go through an OpenSpec change (`/opsx:propose <name>`, then `/opsx:apply`, then `/opsx:archive`), so the specs stay in sync with the code. Each change's `tasks.md` must include its unit-test tasks (see Testing).
 - Known defects and the rationale behind the baseline are recorded in `openspec/changes/archive/*-baseline-existing-system/design.md` ("Known issues").

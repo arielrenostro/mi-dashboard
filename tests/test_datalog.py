@@ -147,3 +147,88 @@ def test_event_column_is_empty_without_a_request(writer, log_path):
     rows = wait_for_rows(log_path, 2)
 
     assert rows[1][1] == ""
+
+
+# --------------------------------------------------------------------- shutdown
+
+@pytest.fixture
+def closable_writer(qapp, log_path, request):
+    lw = LogWriter(log_path)
+
+    def cleanup():  # safety net for a failing test; a no-op once close() worked
+        lw.thread.quit()
+        lw.thread.wait()
+        if not lw.worker.log_file.closed:
+            lw.worker.log_file.close()
+
+    request.addfinalizer(cleanup)
+    return lw
+
+
+def test_close_writes_every_row_that_was_already_received(closable_writer, log_path):
+    """Scenario: Rows pending at exit (no waiting: close() itself guarantees the rows are written)."""
+    for _ in range(300):
+        closable_writer.write(SAMPLE_FRAME)
+
+    closable_writer.close()
+
+    assert len(read_rows(log_path)) == 1 + 300
+
+
+def test_close_closes_the_file_and_finishes_the_writer_thread(closable_writer):
+    """Requirement: Clean shutdown of the log."""
+    closable_writer.write(SAMPLE_FRAME)
+
+    closable_writer.close()
+
+    assert closable_writer.worker.log_file.closed
+    assert closable_writer.thread.isFinished()
+
+
+def test_close_keeps_the_event_marks(closable_writer, log_path):
+    closable_writer.set_event_pending()
+    closable_writer.write(SAMPLE_FRAME)
+    closable_writer.write(SAMPLE_FRAME)
+
+    closable_writer.close()
+
+    assert [row[1] for row in read_rows(log_path)[1:]] == ["MARK", ""]
+
+
+def test_closing_twice_is_harmless(closable_writer, log_path):
+    """Scenario: Closed twice."""
+    closable_writer.write(SAMPLE_FRAME)
+    closable_writer.close()
+
+    closable_writer.close()
+
+    assert len(read_rows(log_path)) == 2
+
+
+def test_frames_arriving_after_close_are_ignored(closable_writer, log_path):
+    closable_writer.close()
+
+    closable_writer.write(SAMPLE_FRAME)
+
+    assert len(read_rows(log_path)) == 1  # only the header
+
+
+def test_close_without_any_rows_leaves_just_the_header(closable_writer, log_path):
+    closable_writer.close()
+
+    assert read_rows(log_path) == [HEADER]
+
+
+def test_the_datalog_wait_is_bounded_to_three_seconds(closable_writer, monkeypatch):
+    """Requirement: Bounded waiting (3 seconds for the datalog)."""
+    from unittest.mock import Mock
+
+    fake_thread = Mock()  # the real thread stays referenced by monkeypatch until the fixture can join it
+    fake_thread.isRunning.return_value = True
+    fake_thread.wait.return_value = False
+    monkeypatch.setattr(closable_writer, "thread", fake_thread)
+
+    closable_writer.close()
+
+    fake_thread.wait.assert_any_call(3000)
+    fake_thread.terminate.assert_called_once()

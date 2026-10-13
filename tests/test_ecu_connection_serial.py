@@ -311,3 +311,73 @@ def test_send_command_is_safe_from_other_threads(make_connection):
         t.join()
 
     assert conn._command_queue.qsize() == 400
+
+
+# --------------------------------------------------------------------- shutdown
+
+def run_in_thread(target):
+    import threading
+
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+    return thread
+
+
+def test_stop_clears_the_running_flag_and_closes_the_port(make_connection):
+    """Requirement: Shutdown (the port is closed and the connection stops)."""
+    port = FakeSerial()
+    conn = make_connection(port)
+
+    conn.stop()
+
+    assert conn.running is False
+    assert port.closed == 1
+
+
+def test_stop_ends_a_connect_loop_that_keeps_retrying(make_connection):
+    """Scenario: Exit while the port is unavailable."""
+    import time
+
+    port = FakeSerial(fail_open_times=10**9)
+    port.is_open = False
+    conn = make_connection(port)
+    thread = run_in_thread(conn.connect)
+    try:
+        time.sleep(0.05)
+        assert thread.is_alive()
+
+        conn.stop()
+        thread.join(2.0)
+
+        assert not thread.is_alive()
+    finally:
+        conn.running = False  # never leave a spinning loop behind for the other tests
+        thread.join(2.0)
+
+
+def test_stop_ends_a_request_waiting_for_an_ecu_answer(make_connection):
+    """Scenario: Exit during the handshake."""
+    import time
+
+    conn = make_connection(FakeSerial())  # a silent ECU
+    thread = run_in_thread(lambda: conn._send_and_retry(EcuCommand.ECU_INFO, [EcuResponse.ECU_INFO]))
+    try:
+        time.sleep(0.05)
+        assert thread.is_alive()
+
+        conn.stop()
+        thread.join(2.0)
+
+        assert not thread.is_alive()
+    finally:
+        conn.running = False
+        thread.join(2.0)
+
+
+def test_stop_is_harmless_when_the_port_is_already_closed(make_connection):
+    conn = make_connection(FakeSerial())
+
+    conn.stop()
+    conn.stop()
+
+    assert conn.running is False

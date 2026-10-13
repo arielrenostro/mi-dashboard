@@ -95,6 +95,7 @@ class EcuConnectionSerial(EcuConnection):
                 self._close()
 
     def stop(self):
+        super().stop()  # clears `running`, which ends the connect and handshake loops
         try:
             self._close()
         except:

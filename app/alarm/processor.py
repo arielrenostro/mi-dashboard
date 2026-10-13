@@ -50,9 +50,14 @@ class AlarmProcessor(QThread):
                 logger.exception("Erro no loop do AlarmProcessor")
             self.msleep(100)
 
-    def stop(self):
-        self._stop_requested.emit()
+    def stop(self, timeout_ms: int = 1000):
+        """Stop the sound and the polling loop, and wait (bounded) for the thread to finish."""
         self.running = False
+        self.player.stop()  # called from the thread that owns the player (the main thread)
+        if self.isRunning() and not self.wait(timeout_ms):
+            logger.warning("Alarm thread did not finish within %d ms; terminating it", timeout_ms)
+            self.terminate()
+            self.wait(1000)
 
     def process_signals(self, signals: Dict[Signal, ParsedSignal]):
         for signal, data in signals.items():

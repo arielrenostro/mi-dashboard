@@ -13,6 +13,7 @@ from app.ecu_connection import register_ecu_connection, get_ecu_connection, get_
 from app.ecu_connection.mock_log import EcuConnectionMock
 from app.ecu_connection.serial import EcuConnectionSerial
 from app.event.marker import EventMarker
+from app.lifecycle import shutdown
 from app.log_writer.log_writer import LogWriter
 from app.logger import setup_logging
 from app.masterinjection.signal_processor import SignalProcessor
@@ -100,11 +101,10 @@ def main():
     get_ecu_connection().emitter.connect(log_writer.write)
     get_ecu_connection_thread().start()
 
-    app.exec()
-
-    app_window.close()
-    alarm_processor.stop()
-    get_ecu_connection_thread().stop()
+    try:
+        app.exec()
+    finally:
+        shutdown(app_window, get_ecu_connection_thread(), alarm_processor, log_writer)
 
 
 if __name__ == "__main__":
