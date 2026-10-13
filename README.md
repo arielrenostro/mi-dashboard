@@ -75,7 +75,8 @@ Settings are loaded from `config.json` in the working directory or from the file
   "connection": {
     "port": "COM1",
     "baudrate": 115200,
-    "mock": ""
+    "mock": "",
+    "mock_skip_lines": 0
   },
   "alarm": {
     "sound": "alarm.wav"
@@ -102,6 +103,7 @@ Settings are loaded from `config.json` in the working directory or from the file
 | `connection.port` | Windows COM port (`"COM5"`, etc.) |
 | `connection.baudrate` | Serial baud rate |
 | `connection.mock` | Path to a recorded CSV for playback without hardware; `""` to use real serial |
+| `connection.mock_skip_lines` | Number of data lines (after the header) the mock skips the first time it plays the file, to start in an interesting region; default `0` |
 | `alarm.sound` | `.wav` file played during limit alarms |
 | `datalog.path` | Existing directory where the per-run CSV logs (`log_stream_YYYYMMDD_HHMMSS.csv`) are created |
 | `dashboard.grid` | 2-D list of signal names for the numeric display grid |

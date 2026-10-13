@@ -41,6 +41,7 @@ class AppConfigConnection:
 
     def __init__(self, config_dict: dict):
         self.mock: str = config_dict.get('mock', '')
+        self.mock_skip_lines: int = config_dict.get('mock_skip_lines', 0)
         self.port: str = config_dict.get('port', '')
         self.baudrate: int = config_dict.get('baudrate', 115200)
 

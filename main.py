@@ -43,7 +43,7 @@ def main():
     signal_processor.emitter.connect(vehicle_state.update)
 
     if config.connection.mock != '':
-        register_ecu_connection(EcuConnectionMock(config.connection.mock))
+        register_ecu_connection(EcuConnectionMock(config.connection.mock, config.connection.mock_skip_lines))
     else:
         register_ecu_connection(EcuConnectionSerial(config.connection.port, config.connection.baudrate))
 

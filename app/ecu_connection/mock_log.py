@@ -12,10 +12,11 @@ logger = logging.getLogger(__name__)
 
 class EcuConnectionMock(EcuConnection):
 
-    def __init__(self, mock_file):
+    def __init__(self, mock_file, skip_lines: int = 0):
         super().__init__()
         self.mock_file = mock_file
-        self.line = 0
+        # Data lines to skip on the first pass only; later passes replay the whole file.
+        self._pending_skip_lines = skip_lines
 
     def send_command(self, cmd: EcuCommand, args: List[Any] | None = None) -> None:
         logger.info(f"Sending command: {cmd} {args}")
@@ -28,6 +29,8 @@ class EcuConnectionMock(EcuConnection):
 
     def run(self):
         last_timestamp = None
+        skip_lines, self._pending_skip_lines = self._pending_skip_lines, 0
+        line_number = 0
 
         map_breakpoint_response = '#I21;20;30;40;50;60;70;80;90;100;120;140;160;180;200;220;240'
         rpm_breakpoint_response = '#I20;400;800;1200;1600;2000;2400;2800;3200;3600;4000;4400;4800;5200;5600;6200;6800'
@@ -73,10 +76,10 @@ class EcuConnectionMock(EcuConnection):
                 log_origin = "this"
 
             for line in f:
-                self.line += 1
+                line_number += 1
                 if not self.running:
                     break
-                if self.line < 12250:
+                if line_number <= skip_lines:
                     continue
                 parts = line.split(';')
 

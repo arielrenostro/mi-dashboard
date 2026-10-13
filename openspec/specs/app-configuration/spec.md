@@ -36,6 +36,7 @@ The system SHALL support the following settings and defaults.
 | `connection.port` | Serial port name | empty |
 | `connection.baudrate` | Serial baud rate | `115200` |
 | `connection.mock` | Path of a CSV file to replay; when non-empty the mock source replaces the serial port | empty (use serial) |
+| `connection.mock_skip_lines` | Number of data lines (after the header) the mock source skips on its first pass | `0` |
 | `alarm.sound` | Audio file played while any alarm is firing | `alarm.wav` |
 | `datalog.path` | Directory where CSV logs are created | not a usable directory (see design.md, Known issues) |
 | `dashboard.grid` | 2-D list of signal names for the numeric grid | 2 rows: `RPM, VSS, MAP, BOOST, CLT, IAT, POWER` / `LAMBDA, LAMBDA_TARGET, FUEL_TRIM, BOOST_TARGET, INJ_UTIL, IGN, TORQUE` |
@@ -52,6 +53,10 @@ The system SHALL support the following settings and defaults.
 #### Scenario: Signal names in layout settings
 - **WHEN** `dashboard.grid` or `dashboard.graph` contain signal names
 - **THEN** each name refers to a signal identifier from the signal catalog (for example `RPM`, `VSS`, `LAMBDA_TARGET`)
+
+#### Scenario: Skip configured
+- **WHEN** `connection.mock_skip_lines` is `500`
+- **THEN** the mock source starts emitting from the 501st data line of the file
 
 ### Requirement: Fixed signal definitions
 Signal indices, display names, units, graph ranges, colors and alarm limits SHALL NOT be configurable through the configuration file; they are fixed by the signal catalog.

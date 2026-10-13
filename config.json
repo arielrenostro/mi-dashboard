@@ -9,6 +9,7 @@
   },
   "connection": {
     "mock": "C:\\Users\\ariel\\OneDrive\\Carros\\206\\Master Injection\\Datalogs\\4Bar - 9\\log_stream_fixed.csv",
+    "mock_skip_lines": 12249,
     "port": "COM1",
     "baudrate": 115200
   },

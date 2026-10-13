@@ -106,3 +106,17 @@ def test_alarm_limits_in_the_file_are_ignored(workdir):
     _setup_config()
 
     assert Signal.RPM.value["alarm"]["max"] == 6600
+
+
+def test_mock_skip_lines_defaults_to_zero(workdir):
+    """Requirement: Supported settings (connection.mock_skip_lines default)."""
+    assert _setup_config().connection.mock_skip_lines == 0
+
+
+def test_mock_skip_lines_is_loaded_from_the_file(workdir):
+    """Scenario: Skip configured."""
+    write_json(workdir / "config.json", {"connection": {"mock": "replay.csv", "mock_skip_lines": 500}})
+
+    cfg = _setup_config()
+
+    assert (cfg.connection.mock, cfg.connection.mock_skip_lines) == ("replay.csv", 500)
