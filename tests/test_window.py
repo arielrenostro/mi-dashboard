@@ -131,3 +131,8 @@ def test_held_escape_does_not_exit_after_returning_to_home(window):
     window.keyPressEvent(key_press(Qt.Key.Key_Escape))  # a fresh press
 
     window.close.assert_called_once()
+
+
+def test_window_title_is_master_injection_dashboard(window):
+    """Requirement: Window title / Scenario: Title shown."""
+    assert window.windowTitle() == "Master Injection Dashboard"

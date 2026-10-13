@@ -12,6 +12,7 @@ class AppWindow(QWidget):
 
     def __init__(self, signal_processor: SignalProcessor):
         super().__init__()
+        self.setWindowTitle("Master Injection Dashboard")
         self._signal_processor = signal_processor
 
         self.stacked_widget = QStackedWidget()

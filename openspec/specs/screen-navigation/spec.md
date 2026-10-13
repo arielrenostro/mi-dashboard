@@ -94,3 +94,10 @@ On the Home screen, pressing ESC SHALL close the window and exit the app. Auto-r
 #### Scenario: Held ESC after returning to Home
 - **WHEN** the user holds ESC on the Dashboard until it returns to Home
 - **THEN** the app does not exit until ESC is released and pressed again
+
+### Requirement: Window title
+The application window SHALL have the title `Master Injection Dashboard`.
+
+#### Scenario: Title shown
+- **WHEN** the app is running
+- **THEN** the window title is `Master Injection Dashboard`
