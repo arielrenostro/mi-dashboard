@@ -251,7 +251,7 @@ class VeCalibrationScreen(Screen):
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
         table.horizontalHeader().setVisible(True)
 
-        # Vertical header: MAP axis values (populated later via populate_ve_table)
+        # Vertical header: MAP axis values (filled in when the ECU breakpoints arrive)
         table.verticalHeader().setDefaultSectionSize(22)
         table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
         table.verticalHeader().setVisible(True)
@@ -415,65 +415,6 @@ class VeCalibrationScreen(Screen):
 
         ve_map_state.adjust_ve(rpm_data.value, map_data.value, delta)
         self.ve_adjustment_made.emit()
-
-    def populate_ve_table(
-            self,
-            rpm_axis: list,
-            map_axis: list,
-            ve_map: list,
-    ):
-        """Populate the 16×16 VE table.
-
-        Args:
-            rpm_axis: 16 RPM integers used as column headers (cols 1-16).
-            map_axis: 16 MAP integers used as row headers (rows 0-15).
-            ve_map:   16×16 float matrix — ve_map[row][col] where row=MAP index,
-                      col=RPM index.
-        """
-        cell_font = QFont("Arial", 10)
-        row_header_font = QFont("Arial", 10)
-        row_header_font.setBold(True)
-
-        all_ve = [ve_map[r][c] / 10 for r in range(16) for c in range(16)]
-        ve_min, ve_max = min(all_ve), max(all_ve)
-
-        # Column headers (RPM values)
-        for col_idx, rpm_val in enumerate(rpm_axis):
-            self.ve_table.setHorizontalHeaderItem(
-                col_idx, self._header_item(str(rpm_val))
-            )
-
-        for row_idx, map_val in enumerate(map_axis):
-            display_row = 15 - row_idx
-            # Vertical row header
-            self.ve_table.setVerticalHeaderItem(
-                display_row, self._header_item(str(map_val))
-            )
-
-            # Col 0: MAP axis label cell
-            map_item = self.ve_table.item(display_row, 0)
-            if map_item is None:
-                map_item = QTableWidgetItem()
-                map_item.setBackground(QColor("#111111"))
-                map_item.setForeground(QColor("#888888"))
-                self.ve_table.setItem(display_row, 0, map_item)
-            map_item.setText(str(map_val))
-            map_item.setFont(row_header_font)
-            map_item.setTextAlignment(
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-            )
-
-            # VE value cells (cols 1-16); ve_map contains raw ECU ints → display as raw/10
-            for col_idx, ve_raw in enumerate(ve_map[row_idx]):
-                item = self.ve_table.item(display_row, col_idx)
-                if item is None:
-                    item = QTableWidgetItem()
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.ve_table.setItem(display_row, col_idx, item)
-                item.setText(f"{ve_raw / 10:.1f}")
-                item.setFont(cell_font)
-                item.setBackground(_ve_cell_color(ve_raw / 10, ve_min, ve_max))
-                item.setForeground(QColor(_DEFAULT_TEXT_COLOR))
 
     def highlight_interpolation(self, weights: dict):
         """Apply interpolation highlights to the VE table.

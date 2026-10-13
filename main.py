@@ -58,45 +58,6 @@ def main():
     app_window.key_event.connect(event_marker.handle_key)
     event_marker.event_triggered.connect(log_writer.set_event_pending)
 
-    # dashboard = Dashboard(
-    #     grid=GRID,
-    #     graphs=GRAPH,
-    #     graph_x_size=150,
-    # )
-    #
-    # home_screen = HomeScreen()
-    #
-    # ve_calibration_screen = VeCalibrationScreen()
-    # ve_calibration_screen.populate_ve_table(
-    #     ve_map_state.rpm_axis,
-    #     ve_map_state.map_axis,
-    #     ve_map_state.ve_map,
-    # )
-    #
-    # ve_write_controller = VeWriteController(EVENT_SOUND)
-
-    # lambda_toggle = LambdaToggle(EVENT_SOUND)
-    # lambda_toggle.command_requested.connect(ecu_connection.send_command)
-    # lambda_toggle.command_requested.connect(lambda_loop_processor.on_command_received)
-    #
-    # space_detector = KeyHoldDetector(Qt.Key.Key_Space, 2000)
-    # space_detector.triggered.connect(lambda_toggle.handle_trigger)
-
-
-    # app_window.key_event.connect(space_detector.on_key_pressed)
-    # app_window.key_event.connect(ve_calibration_screen.handle_key)
-    # app_window.key_released.connect(space_detector.on_key_released)
-
-    # dashboard.key_event.connect(space_detector.on_key_pressed)
-    # dashboard.key_released.connect(space_detector.on_key_released)
-
-    #
-    # # Request breakpoints and full VE map from ECU on startup
-    # ecu_connection.send_command(EcuCommand.RPM_BREAKPOINTS)
-    # ecu_connection.send_command(EcuCommand.MAP_BREAKPOINTS)
-    # for row in range(16):
-    #     ecu_connection.send_command(EcuCommand.ve_row(row))
-
     get_ecu_connection_thread().error.connect(app_window.on_connection_error)
     get_ecu_connection().emitter.connect(signal_processor.process_line)
     get_ecu_connection().emitter.connect(log_writer.write)

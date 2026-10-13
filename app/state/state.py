@@ -21,7 +21,6 @@ class VehicleState:
         self._lock = threading.RLock()
         self._signals: dict = {}
         self._alarm_timestamps: dict = {}
-        self._lambda_loop_closed: bool = False
         self._rpm_breakpoints: list[int] = [0 for _ in range(16)]
         self._map_breakpoints: list[int] = [0 for _ in range(16)]
         self._ve_map: list[list[int]] = [[0 for _ in range(16)] for _ in range(16)]
@@ -58,14 +57,6 @@ class VehicleState:
         with self._lock:
             if active:
                 self._alarm_timestamps[signal] = time.time()
-
-    def set_lambda_loop_state(self, is_closed: bool) -> None:
-        with self._lock:
-            self._lambda_loop_closed = is_closed
-
-    def is_lambda_loop_closed(self) -> bool:
-        with self._lock:
-            return self._lambda_loop_closed
 
     def get_rpm_breakpoints(self) -> list[int]:
         with self._lock:
