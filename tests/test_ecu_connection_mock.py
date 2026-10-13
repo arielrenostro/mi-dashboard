@@ -171,3 +171,14 @@ def test_status_is_connected_only_while_running(tmp_path, running, status):
 
     assert mock.get_connection_status() == status
     assert mock.is_connected() is running
+
+
+def test_the_mock_source_never_reports_errors(tmp_path, sleeps):
+    """Requirement: Connection error reporting (the mock source does not report errors)."""
+    mock = make_mock(write_log(tmp_path / "log.csv", 5))
+    mock.error_emitter = RecordingEmitter()
+
+    mock.run()
+    mock.send_command(EcuCommand.LAMBDA_LOOP_OPEN)
+
+    assert mock.error_emitter.lines == []

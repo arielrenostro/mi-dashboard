@@ -1,5 +1,6 @@
 import logging
 import queue
+import threading
 from typing import List, Optional, Any
 
 import serial
@@ -10,6 +11,8 @@ from app.masterinjection.protocol import EcuCommand, EcuResponse
 from app.state.state import vehicle_state
 
 logger = logging.getLogger(__name__)
+
+RETRY_DELAY_SECONDS = 1.0
 
 
 class EcuConnectionSerial(EcuConnection):
@@ -23,6 +26,11 @@ class EcuConnectionSerial(EcuConnection):
         self._command_queue: queue.Queue = queue.Queue()
         self.count_zero = 0
         self._connection_status = EcuConnectionStatus.DISCONNECTED
+        self._stop_event = threading.Event()  # wakes the retry wait up when the source is stopped
+
+    def start(self):
+        super().start()
+        self._stop_event.clear()
 
     def send_command(self, cmd: EcuCommand, args: List[Any] | None = None) -> None:
         """Queue a command. args (optional list) are appended as ';'-separated values."""
@@ -34,6 +42,7 @@ class EcuConnectionSerial(EcuConnection):
 
         if self.count_zero == 3:
             logger.warning("Muitos retornos vazios... Reconectando...")
+            self.report_error("Sem resposta da ECU (3 leituras vazias). Reconectando...")
             self.count_zero = 0
             self._close()
             return
@@ -62,6 +71,7 @@ class EcuConnectionSerial(EcuConnection):
 
         except Exception as e:
             logger.warning("Conexão perdida. Reconectando... %s", e)
+            self.report_error(f"Conexão perdida: {e}")
             self._connection_status = EcuConnectionStatus.ERROR
             try:
                 self._close()
@@ -89,13 +99,17 @@ class EcuConnectionSerial(EcuConnection):
                 self._fetch_ve_map()
                 self._start_streaming()
                 self._connection_status = EcuConnectionStatus.CONNECTED
+                self.clear_reported_error()
                 return
             except Exception as e:
                 logger.warning("Falha ao tentar conectar. Erro: %s", e)
+                self.report_error(f"Falha ao conectar em {self.serial.port}: {e}")
                 self._close()
+                self._stop_event.wait(RETRY_DELAY_SECONDS)
 
     def stop(self):
         super().stop()  # clears `running`, which ends the connect and handshake loops
+        self._stop_event.set()  # and interrupts a retry wait that is in progress
         try:
             self._close()
         except:

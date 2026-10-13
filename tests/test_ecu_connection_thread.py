@@ -152,3 +152,44 @@ def test_mock_source_stops_during_a_replay(make_thread, tmp_path):
 
     assert not thread.isRunning()
     assert time.time() - started < 1.0
+
+
+# ------------------------------------------------------------ error signal path
+
+def test_the_thread_gives_the_connection_its_error_signal(make_thread):
+    """Requirement: Connection error reporting (reports are delivered through the thread's signal)."""
+    connection = CountingConnection()
+
+    thread = make_thread(connection)
+    received = []
+    thread.error.connect(received.append)
+
+    connection.error_emitter.emit("erro de teste")
+
+    assert received == ["erro de teste"]
+
+
+def test_a_reported_error_reaches_the_receivers_of_the_thread_signal(make_thread):
+    connection = CountingConnection()
+    thread = make_thread(connection)
+    received = []
+    thread.error.connect(received.append)
+
+    connection.report_error("Falha ao conectar em COM3")
+    connection.report_error("Falha ao conectar em COM3")  # identical: not reported again
+    connection.report_error("Conexão perdida")
+
+    assert received == ["Falha ao conectar em COM3", "Conexão perdida"]
+
+
+def test_clearing_the_reported_error_allows_the_same_message_again(make_thread):
+    connection = CountingConnection()
+    thread = make_thread(connection)
+    received = []
+    thread.error.connect(received.append)
+
+    connection.report_error("erro")
+    connection.clear_reported_error()
+    connection.report_error("erro")
+
+    assert received == ["erro", "erro"]

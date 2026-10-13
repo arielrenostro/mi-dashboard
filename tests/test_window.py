@@ -230,3 +230,74 @@ def test_real_alarm_processor_onset_flashes_the_dashboard_card(window, processor
     alarm.process_signals({Signal.RPM: parsed(Signal.RPM, 6700)})
 
     window._screens["dashboard"].fire_field_alarm.assert_called_once_with(Signal.RPM)
+
+
+# ------------------------------------------------------------ connection errors
+
+@pytest.mark.parametrize("screen", ["home", "dashboard", "ve_calibration"])
+def test_connection_error_overlay_is_shown_on_every_screen(window, screen):
+    """Requirement: Connection error overlay (visible on every screen)."""
+    window.show_screen(screen)
+
+    window.on_connection_error("Falha ao conectar em COM3")
+
+    assert window._error_overlay.isVisible()
+    assert window._current_screen_name == screen
+
+
+def test_showing_the_overlay_does_not_change_the_active_screen(window):
+    window.show_screen("ve_calibration")
+
+    window.on_connection_error("erro")
+
+    assert window.stacked_widget.currentWidget() is window._screens["ve_calibration"]
+
+
+def test_keys_are_still_routed_to_the_active_screen_while_the_overlay_is_visible(window):
+    """Scenario: Keys keep working."""
+    window.on_connection_error("erro")
+
+    window.keyPressEvent(key_press(Qt.Key.Key_Down))
+    window.keyPressEvent(key_press(Qt.Key.Key_Return))  # Home: opens the VE calibration screen
+
+    assert window._current_screen_name == "ve_calibration"
+    assert window._error_overlay.isVisible()  # the keys neither dismissed it nor changed its timeout
+
+
+def test_escape_still_navigates_while_the_overlay_is_visible(window):
+    window.show_screen("dashboard")
+    window.on_connection_error("erro")
+
+    window.keyPressEvent(key_press(Qt.Key.Key_Escape))
+
+    assert window._current_screen_name == "home"
+    assert window._error_overlay.isVisible()
+
+
+def test_a_second_error_replaces_the_message_in_the_same_overlay(window):
+    from PyQt6.QtWidgets import QLabel
+
+    window.on_connection_error("primeiro")
+    window.on_connection_error("segundo")
+
+    texts = [label.text() for label in window._error_overlay.findChildren(QLabel)]
+    assert "segundo" in texts and "primeiro" not in texts
+
+
+def test_the_thread_error_signal_reaches_the_overlay(window, qapp):
+    """The wiring main() creates: connection thread error signal -> window -> overlay."""
+    from app.ecu_connection.ecu_connection import EcuConnection
+    from app.ecu_connection.thread import EcuConnectionThread
+
+    class Silent(EcuConnection):
+        def send_command(self, cmd, args=None): pass
+        def run(self): pass
+        def is_connected(self): return False
+
+    connection = Silent()
+    thread = EcuConnectionThread(connection)
+    thread.error.connect(window.on_connection_error)
+
+    connection.report_error("Conexão perdida: link lost")
+
+    assert window._error_overlay.isVisible()

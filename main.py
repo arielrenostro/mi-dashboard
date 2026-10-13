@@ -97,6 +97,7 @@ def main():
     # for row in range(16):
     #     ecu_connection.send_command(EcuCommand.ve_row(row))
 
+    get_ecu_connection_thread().error.connect(app_window.on_connection_error)
     get_ecu_connection().emitter.connect(signal_processor.process_line)
     get_ecu_connection().emitter.connect(log_writer.write)
     get_ecu_connection_thread().start()

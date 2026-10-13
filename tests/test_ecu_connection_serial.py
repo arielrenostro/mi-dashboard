@@ -11,6 +11,10 @@ from tests.conftest import RecordingEmitter
 from tests.helpers import MAP_AXIS, RPM_AXIS
 
 
+class RunawayLoop(BaseException):
+    """Raised by FakeSerial when a loop never ends. A BaseException, so the code under test cannot swallow it."""
+
+
 class FakeSerial:
     """Scriptable replacement for the pyserial port.
 
@@ -20,16 +24,22 @@ class FakeSerial:
 
     def __init__(self, lines=(), responder=None, fail_open_times=0):
         self.is_open = True
+        self.port = "COM1"
         self.written = []
         self.closed = 0
         self.open_calls = 0
         self.fail_open_times = fail_open_times
+        self.open_errors = []  # scripted exceptions, consumed one per open() call before fail_open_times applies
         self._replies = deque(lines)
         self._responder = responder
         self.read_error = None
 
     def open(self):
         self.open_calls += 1
+        if self.open_calls > 200:
+            raise RunawayLoop("open() called more than 200 times: the connect loop does not end")
+        if self.open_errors:
+            raise self.open_errors.pop(0)
         if self.open_calls <= self.fail_open_times:
             raise OSError("port unavailable")
         self.is_open = True
@@ -73,12 +83,36 @@ def ecu_responder(text):
     return []
 
 
+class FakeEvent:
+    """Stand-in for the stop event: records how long the connect loop wanted to wait, without waiting."""
+
+    def __init__(self):
+        self.waits = []
+        self._set = False
+
+    def wait(self, timeout=None):
+        self.waits.append(timeout)
+        return self._set
+
+    def set(self):
+        self._set = True
+
+    def clear(self):
+        self._set = False
+
+    def is_set(self):
+        return self._set
+
+
 @pytest.fixture
 def make_connection():
-    def factory(serial_port=None):
+    def factory(serial_port=None, real_wait=False):
         conn = EcuConnectionSerial("COM1", 115200)
         conn.serial = serial_port or FakeSerial()
         conn.emitter = RecordingEmitter()
+        conn.error_emitter = RecordingEmitter()
+        if not real_wait:
+            conn._stop_event = FakeEvent()
         conn.running = True
         return conn
 
@@ -340,16 +374,18 @@ def test_stop_ends_a_connect_loop_that_keeps_retrying(make_connection):
 
     port = FakeSerial(fail_open_times=10**9)
     port.is_open = False
-    conn = make_connection(port)
+    conn = make_connection(port, real_wait=True)
     thread = run_in_thread(conn.connect)
     try:
         time.sleep(0.05)
         assert thread.is_alive()
 
+        started = time.time()
         conn.stop()
         thread.join(2.0)
 
         assert not thread.is_alive()
+        assert time.time() - started < 0.5  # the 1 s retry wait is interrupted, not waited out
     finally:
         conn.running = False  # never leave a spinning loop behind for the other tests
         thread.join(2.0)
@@ -381,3 +417,145 @@ def test_stop_is_harmless_when_the_port_is_already_closed(make_connection):
     conn.stop()
 
     assert conn.running is False
+
+
+# -------------------------------------------------------------- error reporting
+
+def test_failed_open_reports_one_error_with_the_detail(make_connection):
+    """Scenario: Port missing."""
+    port = FakeSerial(fail_open_times=1, responder=ecu_responder)
+    port.is_open = False
+    conn = make_connection(port)
+
+    conn.connect()
+
+    assert len(conn.error_emitter.lines) == 1
+    message = conn.error_emitter.lines[0]
+    assert "COM1" in message and "port unavailable" in message
+
+
+def test_io_error_reports_the_lost_connection(make_connection):
+    """Requirement: Connection error reporting (a read or write error forces a reconnect)."""
+    port = FakeSerial()
+    port.read_error = OSError("link lost")
+    conn = make_connection(port)
+
+    conn.run()
+
+    assert len(conn.error_emitter.lines) == 1
+    assert "link lost" in conn.error_emitter.lines[0]
+
+
+def test_three_empty_reads_report_that_the_ecu_is_silent(make_connection):
+    """Requirement: Connection error reporting (three consecutive empty reads force a reconnect)."""
+    conn = make_connection(FakeSerial())
+
+    for _ in range(4):
+        conn.run()
+
+    assert len(conn.error_emitter.lines) == 1
+    assert "ECU" in conn.error_emitter.lines[0]
+
+
+def test_an_error_that_repeats_is_reported_only_once(make_connection):
+    """Scenario: Same error repeats."""
+    port = FakeSerial(fail_open_times=4, responder=ecu_responder)
+    port.is_open = False
+    conn = make_connection(port)
+
+    conn.connect()
+
+    assert port.open_calls == 5  # four failed attempts, then success
+    assert len(conn.error_emitter.lines) == 1
+
+
+def test_a_different_error_is_reported(make_connection):
+    """Scenario: Different error."""
+    port = FakeSerial(responder=ecu_responder)
+    port.is_open = False
+    port.open_errors = [OSError("first problem"), OSError("first problem"), OSError("second problem")]
+    conn = make_connection(port)
+
+    conn.connect()
+
+    assert [("first problem" in m, "second problem" in m) for m in conn.error_emitter.lines] == [(True, False), (False, True)]
+
+
+def test_alternating_errors_are_each_reported(make_connection):
+    port = FakeSerial(responder=ecu_responder)
+    port.is_open = False
+    port.open_errors = [OSError("A"), OSError("B"), OSError("A")]
+    conn = make_connection(port)
+
+    conn.connect()
+
+    assert len(conn.error_emitter.lines) == 3
+
+
+def test_reaching_connected_re_arms_the_reporting(make_connection):
+    """Scenario: Recovery re-arms reporting."""
+    port = FakeSerial(responder=ecu_responder)
+    port.is_open = False
+    port.open_errors = [OSError("link problem")]
+    conn = make_connection(port)
+    conn.connect()  # fails once, then connects
+    assert len(conn.error_emitter.lines) == 1
+
+    port.is_open = False
+    port.open_errors = [OSError("link problem")]  # the very same error after the recovery
+    conn.connect()
+
+    assert len(conn.error_emitter.lines) == 2
+
+
+def test_reporting_without_a_receiver_is_harmless(make_connection):
+    conn = make_connection(FakeSerial(fail_open_times=1, responder=ecu_responder))
+    conn.serial.is_open = False
+    conn.error_emitter = None
+
+    conn.connect()
+
+    assert conn.get_connection_status() == EcuConnectionStatus.CONNECTED
+
+
+# ----------------------------------------------------------------- retry pacing
+
+def test_failed_attempts_wait_one_second_before_the_next(make_connection):
+    """Scenario: Port unavailable."""
+    port = FakeSerial(fail_open_times=3, responder=ecu_responder)
+    port.is_open = False
+    conn = make_connection(port)
+
+    conn.connect()
+
+    assert conn._stop_event.waits == [1.0, 1.0, 1.0]
+
+
+def test_a_successful_connect_does_not_wait(make_connection):
+    conn = make_connection(FakeSerial(responder=ecu_responder))
+
+    conn.connect()
+
+    assert conn._stop_event.waits == []
+
+
+def test_connect_stops_retrying_when_the_source_is_stopped_during_the_wait(make_connection):
+    port = FakeSerial(fail_open_times=10**9)
+    port.is_open = False
+    conn = make_connection(port)
+    conn._stop_event.wait = lambda timeout=None: conn.stop() or True  # stop() arrives while waiting
+
+    conn.connect()
+
+    assert port.open_calls == 1
+
+
+def test_start_re_arms_the_stop_event(make_connection):
+    conn = make_connection(FakeSerial())
+    conn.stop()
+    assert conn._stop_event.is_set()
+
+    conn.start()
+
+    assert not conn._stop_event.is_set()
+    assert conn.running is True

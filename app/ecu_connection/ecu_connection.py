@@ -21,7 +21,21 @@ class EcuConnection(ABC):
     def __init__(self):
         super().__init__()
         self.emitter = None
+        self.error_emitter = None  # set by the thread wrapper; the mock never uses it
         self.running = False
+        self._last_reported_error = None
+
+    def report_error(self, message: str) -> None:
+        """Tell the UI about a connection error, once: an identical message is not repeated until another one
+        is reported or clear_reported_error() is called (when the connection recovers)."""
+        if message == self._last_reported_error:
+            return
+        self._last_reported_error = message
+        if self.error_emitter is not None:
+            self.error_emitter.emit(message)
+
+    def clear_reported_error(self) -> None:
+        self._last_reported_error = None
 
     @abstractmethod
     def send_command(self, cmd: EcuCommand, args: List[Any] | None = None) -> None:

@@ -19,7 +19,8 @@ A real-time telemetry dashboard for the Master Injection ECU. Streams sensor dat
 - **Lambda loop control** — open and close the lambda loop from the VE calibration screen with a keystroke; plays a configurable sound on each command
 - **CSV logging** — one file per run; appends every ECU frame with a millisecond Unix timestamp and an optional event label
 - **Manual event marking** — press **Enter** on the Dashboard or the VE calibration screen to beep and stamp `MARK` on the next CSV row
-- **Automatic reconnection** — detects dropped Bluetooth connections and reconnects without restarting the app
+- **Automatic reconnection** — detects dropped Bluetooth connections and reconnects without restarting the app, retrying once per second
+- **Connection error alerts** — a square, dialog-like overlay shows the failure (port, error detail) for 2 seconds on whatever screen is active, without taking the keyboard; the same error is not repeated while it persists
 - **Mock mode** — replay a previously recorded CSV file instead of connecting to hardware
 
 ---

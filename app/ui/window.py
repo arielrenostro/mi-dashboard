@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import QWidget, QStackedWidget
 
 from app.config import config
 from app.masterinjection.signal_processor import SignalProcessor
+from app.ui.components.error_overlay import ErrorOverlay
 from app.ui.dashboard.screen import DashboardScreen
 from app.ui.home.screen import HomeScreen
 from app.ui.ve_calibration.screen import VeCalibrationScreen
@@ -23,6 +24,7 @@ class AppWindow(QWidget):
 
         self.stacked_widget = QStackedWidget()
         self.setLayout(self._create_layout())
+        self._error_overlay = ErrorOverlay(self)
 
         self._screens = {}
         self._current_screen_name = None
@@ -58,6 +60,15 @@ class AppWindow(QWidget):
             "ve_calibration",
             ve_calibration_screen,
         )
+
+    def on_connection_error(self, message: str):
+        """Show a connection error over the current screen for a couple of seconds."""
+        self._error_overlay.show_message(message)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._error_overlay.isVisible():
+            self._error_overlay.reposition()
 
     def on_alarm_onset(self, signal):
         """Forward the alarm onset notification to the Dashboard so the signal's card flashes."""

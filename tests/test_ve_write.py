@@ -1,5 +1,4 @@
 """Spec: openspec/specs/ve-write."""
-import time
 from unittest.mock import Mock
 
 import pytest
@@ -53,15 +52,17 @@ def test_adjustment_starts_a_one_second_single_shot_delay(env):
 
 
 def test_each_adjustment_restarts_the_delay(env):
-    """Scenario: Burst of edits."""
+    """Scenario: Burst of edits (QTimer.start restarts a running timer, so every edit must call it)."""
     _, _, controller = env
-    controller.on_adjustment_made()
-    time.sleep(0.15)
-    elapsed_remaining = controller._timer.remainingTime()
+    starts = []
+    real_start = controller._timer.start
+    controller._timer.start = lambda *args: (starts.append(args), real_start(*args))[1]
 
-    controller.on_adjustment_made()
+    for _ in range(3):
+        controller.on_adjustment_made()
 
-    assert controller._timer.remainingTime() > elapsed_remaining
+    assert starts == [(1000,)] * 3
+    assert controller._timer.isActive()
 
 
 def test_nothing_is_sent_before_the_delay_elapses(env):

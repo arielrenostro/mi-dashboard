@@ -9,11 +9,13 @@ logger = logging.getLogger(__name__)
 
 class EcuConnectionThread(QThread):
     emitter = pyqtSignal(str)
+    error = pyqtSignal(str)
 
     def __init__(self, ecu_connection: EcuConnection):
         super().__init__()
         self.ecu_connection = ecu_connection
         self.ecu_connection.emitter = self.emitter
+        self.ecu_connection.error_emitter = self.error
         self.running = False
 
     def start(self, **kwargs):
