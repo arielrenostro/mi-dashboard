@@ -1,0 +1,96 @@
+## Purpose
+
+Describes how the app connects to the ECU (real serial link or mock replay), synchronizes ECU data, assembles telemetry frames, recovers from failures, exposes connection status and accepts commands from any part of the app.
+
+## ADDED Requirements
+
+### Requirement: Source selection
+The system SHALL use the mock source when `connection.mock` is non-empty and the serial source otherwise. The chosen source SHALL run on its own background thread and deliver each received line to the rest of the app.
+
+#### Scenario: Serial source
+- **WHEN** `connection.mock` is empty
+- **THEN** the app opens the configured serial port and baud rate
+
+#### Scenario: Mock source
+- **WHEN** `connection.mock` is a path
+- **THEN** no serial port is opened
+
+### Requirement: Connect and synchronize sequence
+On connect, the serial source SHALL perform in order: open the port; send the ECU info command until an `#D50` response arrives; request MAP breakpoints and then RPM breakpoints and publish both axes to the shared state only when both responses are non-empty; request the VE map rows and publish each response to the shared state; send the streaming start command until a telemetry response (`#D01`, `#D02` or `#D03`) arrives. A command awaiting a response SHALL be re-sent after every 3 reads without a matching response, indefinitely while the connection is running.
+
+#### Scenario: Normal connect
+- **WHEN** the ECU answers every request
+- **THEN** status moves CONNECTING, HANDSHAKE, CONNECTED and telemetry starts flowing
+
+#### Scenario: Silent ECU
+- **WHEN** the ECU does not answer a request
+- **THEN** the request is re-sent every third read and the sequence does not advance
+
+#### Scenario: Port cannot be opened
+- **WHEN** opening the port fails
+- **THEN** the failure is logged and the attempt is repeated until it succeeds or the app stops
+
+### Requirement: VE row publication
+Each VE row response SHALL be stored in the shared state at the row index matching its number and announced as a change event.
+
+#### Scenario: Row response
+- **WHEN** `#F03;...` with 16 values is received during synchronization
+- **THEN** row index 2 of the shared VE map is replaced and a change event is emitted
+
+### Requirement: Frame assembly
+While streaming, the serial source SHALL keep the latest `#D01` line and latest `#D02` line. When both are present it SHALL emit exactly one combined `#D01...;#D02...` line and clear both buffers. Any other non-empty line SHALL be emitted unchanged.
+
+#### Scenario: Complete cycle
+- **WHEN** a `#D01` line and a `#D02` line have arrived
+- **THEN** one combined line is emitted and the buffers are cleared
+
+#### Scenario: Incomplete cycle
+- **WHEN** only a `#D01` line has arrived
+- **THEN** nothing combined is emitted yet
+
+### Requirement: Failure recovery
+The serial source SHALL close the port and run the full connect and synchronize sequence again after 3 consecutive empty reads, or after any read or write error. Reconnecting SHALL reload breakpoints and VE rows from the ECU.
+
+#### Scenario: Silent link
+- **WHEN** three consecutive reads return no data
+- **THEN** the port is closed and the connect sequence restarts
+
+#### Scenario: I/O error
+- **WHEN** reading raises an error
+- **THEN** the port is closed and the connect sequence restarts
+
+### Requirement: Command queue
+Any part of the app SHALL be able to request a command, optionally with arguments, from any thread. Commands SHALL be written in first-in first-out order, and only between reads: after a complete telemetry cycle or after a non-telemetry line.
+
+#### Scenario: Command during streaming
+- **WHEN** a command is requested while telemetry is streaming
+- **THEN** it is written after the next complete telemetry cycle
+
+#### Scenario: Order
+- **WHEN** two commands are requested in sequence
+- **THEN** they are written in that order
+
+### Requirement: Connection status
+The connection SHALL report one of CONNECTED, DISCONNECTED, CONNECTING, HANDSHAKE or ERROR. Closing the port sets DISCONNECTED. For the mock source, the status SHALL be CONNECTED while the source is running and DISCONNECTED otherwise.
+
+#### Scenario: Link lost
+- **WHEN** the port is closed after a failure
+- **THEN** the status is DISCONNECTED until the next connect attempt starts
+
+### Requirement: Mock replay
+The mock source SHALL, when started, publish a fixed set of breakpoints and a fixed VE map to the shared state. It SHALL skip the first line of the file, then emit every following line (trimmed) at one line every 0.1 seconds, and restart from the beginning of the file when it ends. Lines that do not start with `#D01` are ignored by downstream consumers. Commands sent to the mock SHALL have no effect on the replay.
+
+#### Scenario: Replay pace
+- **WHEN** the mock is running
+- **THEN** one line is emitted every 0.1 seconds
+
+#### Scenario: End of file
+- **WHEN** the last line has been emitted
+- **THEN** the replay restarts from the second line of the file
+
+### Requirement: Shutdown
+When the app exits, the connection SHALL stop and close the serial port.
+
+#### Scenario: Exit
+- **WHEN** the user closes the app
+- **THEN** the port is closed
