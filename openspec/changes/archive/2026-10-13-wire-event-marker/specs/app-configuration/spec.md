@@ -8,6 +8,7 @@ The system SHALL support the following settings and defaults.
 | `connection.port` | Serial port name | empty |
 | `connection.baudrate` | Serial baud rate | `115200` |
 | `connection.mock` | Path of a CSV file to replay; when non-empty the mock source replaces the serial port | empty (use serial) |
+| `connection.mock_skip_lines` | Number of data lines (after the header) the mock source skips on its first pass | `0` |
 | `alarm.sound` | Audio file played while any alarm is firing | `alarm.wav` |
 | `datalog.path` | Directory where CSV logs are created | not a usable directory (see design.md, Known issues) |
 | `datalog.mark_sound` | Audio played when the user marks an event | `alarm.wav` |
@@ -25,6 +26,10 @@ The system SHALL support the following settings and defaults.
 #### Scenario: Signal names in layout settings
 - **WHEN** `dashboard.grid` or `dashboard.graph` contain signal names
 - **THEN** each name refers to a signal identifier from the signal catalog (for example `RPM`, `VSS`, `LAMBDA_TARGET`)
+
+#### Scenario: Skip configured
+- **WHEN** `connection.mock_skip_lines` is `500`
+- **THEN** the mock source starts emitting from the 501st data line of the file
 
 #### Scenario: Mark sound configured
 - **WHEN** `datalog.mark_sound` names an audio file

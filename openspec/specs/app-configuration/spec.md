@@ -39,6 +39,7 @@ The system SHALL support the following settings and defaults.
 | `connection.mock_skip_lines` | Number of data lines (after the header) the mock source skips on its first pass | `0` |
 | `alarm.sound` | Audio file played while any alarm is firing | `alarm.wav` |
 | `datalog.path` | Directory where CSV logs are created | not a usable directory (see design.md, Known issues) |
+| `datalog.mark_sound` | Audio played when the user marks an event | `alarm.wav` |
 | `dashboard.grid` | 2-D list of signal names for the numeric grid | 2 rows: `RPM, VSS, MAP, BOOST, CLT, IAT, POWER` / `LAMBDA, LAMBDA_TARGET, FUEL_TRIM, BOOST_TARGET, INJ_UTIL, IGN, TORQUE` |
 | `dashboard.graph` | List of graph groups; each group is a list of signal names sharing one plot | 2 groups: `RPM, MAP` / `LAMBDA, LAMBDA_TARGET, FUEL_TRIM` |
 | `dashboard.graph_x_size` | Number of samples kept per graph series | `150` |
@@ -57,6 +58,10 @@ The system SHALL support the following settings and defaults.
 #### Scenario: Skip configured
 - **WHEN** `connection.mock_skip_lines` is `500`
 - **THEN** the mock source starts emitting from the 501st data line of the file
+
+#### Scenario: Mark sound configured
+- **WHEN** `datalog.mark_sound` names an audio file
+- **THEN** that file is played when an event is marked
 
 ### Requirement: Fixed signal definitions
 Signal indices, display names, units, graph ranges, colors and alarm limits SHALL NOT be configurable through the configuration file; they are fixed by the signal catalog.

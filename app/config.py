@@ -27,6 +27,7 @@ class AppConfigDatalog:
 
     def __init__(self, config_dict: dict):
         self.path: str = config_dict.get('path', os.path.pathsep)
+        self.mark_sound: str = config_dict.get('mark_sound', 'alarm.wav')
 
 
 class AppConfigVeCalibration:

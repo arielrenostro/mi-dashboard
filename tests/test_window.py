@@ -136,3 +136,69 @@ def test_held_escape_does_not_exit_after_returning_to_home(window):
 def test_window_title_is_master_injection_dashboard(window):
     """Requirement: Window title / Scenario: Title shown."""
     assert window.windowTitle() == "Master Injection Dashboard"
+
+
+# ------------------------------------------------------------------ key signal
+
+@pytest.fixture
+def pressed(window):
+    """Keys announced by the window's key signal."""
+    keys = []
+    window.key_event.connect(keys.append)
+    return keys
+
+
+@pytest.mark.parametrize("screen", ["dashboard", "ve_calibration"])
+def test_key_signal_is_emitted_on_the_data_screens(window, pressed, screen):
+    """Requirement: Manual event mark (Dashboard and VE calibration screen)."""
+    window.show_screen(screen)
+
+    window.keyPressEvent(key_press(Qt.Key.Key_Return))
+
+    assert pressed == [int(Qt.Key.Key_Return)]
+
+
+def test_key_signal_is_not_emitted_on_home(window, pressed):
+    """Scenario: Home screen."""
+    window.keyPressEvent(key_press(Qt.Key.Key_Down))
+    window.keyPressEvent(key_press(Qt.Key.Key_Return))  # opens the VE screen
+
+    assert pressed == []
+    assert window._current_screen_name == "ve_calibration"
+
+
+def test_enter_that_opens_a_screen_is_not_announced_after_the_switch(window, pressed):
+    """Scenario: Home screen (the screen is judged before the key is handled)."""
+    window.keyPressEvent(key_press(Qt.Key.Key_Return))  # Home -> Dashboard
+
+    assert window._current_screen_name == "dashboard"
+    assert pressed == []
+
+
+def test_key_signal_ignores_auto_repeat(window, pressed):
+    """Scenario: Held key."""
+    window.show_screen("dashboard")
+
+    window.keyPressEvent(key_press(Qt.Key.Key_Return))
+    for _ in range(5):
+        window.keyPressEvent(key_press(Qt.Key.Key_Return, auto_repeat=True))
+
+    assert pressed == [int(Qt.Key.Key_Return)]
+
+
+def test_key_signal_carries_every_key_so_listeners_can_filter(window, pressed):
+    window.show_screen("ve_calibration")
+
+    for key in (Qt.Key.Key_R, Qt.Key.Key_Enter, Qt.Key.Key_Up):
+        window.keyPressEvent(key_press(key))
+
+    assert pressed == [int(Qt.Key.Key_R), int(Qt.Key.Key_Enter), int(Qt.Key.Key_Up)]
+
+
+def test_screen_still_handles_the_key_that_was_announced(window, pressed):
+    window.show_screen("dashboard")
+
+    window.keyPressEvent(key_press(Qt.Key.Key_Escape))
+
+    assert pressed == [int(Qt.Key.Key_Escape)]
+    assert window._current_screen_name == "home"

@@ -1,3 +1,4 @@
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QWidget, QStackedWidget
 
 from app.config import config
@@ -9,6 +10,11 @@ from app.ui.ve_calibration.screen import VeCalibrationScreen
 
 class AppWindow(QWidget):
     """Main application window that manages multiple screens."""
+
+    # Announces every non-repeating key press made on a data screen (Dashboard or VE calibration).
+    key_event = pyqtSignal(int)
+
+    _DATA_SCREENS = ("dashboard", "ve_calibration")
 
     def __init__(self, signal_processor: SignalProcessor):
         super().__init__()
@@ -82,8 +88,12 @@ class AppWindow(QWidget):
 
     def keyPressEvent(self, event):
         """Handle key press events."""
+        # Judge the screen before the key is handled: Enter on Home opens a screen and must not be announced.
+        announce = self._current_screen_name in self._DATA_SCREENS and not event.isAutoRepeat()
         self._screens[self._current_screen_name].keyPressEvent(event)
         super().keyPressEvent(event)
+        if announce:
+            self.key_event.emit(int(event.key()))
 
     def keyReleaseEvent(self, event):
         """Handle key release events."""

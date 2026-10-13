@@ -120,3 +120,17 @@ def test_mock_skip_lines_is_loaded_from_the_file(workdir):
     cfg = _setup_config()
 
     assert (cfg.connection.mock, cfg.connection.mock_skip_lines) == ("replay.csv", 500)
+
+
+def test_mark_sound_defaults_to_alarm_wav(workdir):
+    """Requirement: Supported settings (datalog.mark_sound default)."""
+    assert _setup_config().datalog.mark_sound == "alarm.wav"
+
+
+def test_mark_sound_is_loaded_from_the_file(workdir):
+    """Scenario: Mark sound configured."""
+    write_json(workdir / "config.json", {"datalog": {"path": "logs", "mark_sound": "mark.wav"}})
+
+    cfg = _setup_config()
+
+    assert (cfg.datalog.path, cfg.datalog.mark_sound) == ("logs", "mark.wav")

@@ -12,6 +12,7 @@ from app.config import config
 from app.ecu_connection import register_ecu_connection, get_ecu_connection, get_ecu_connection_thread
 from app.ecu_connection.mock_log import EcuConnectionMock
 from app.ecu_connection.serial import EcuConnectionSerial
+from app.event.marker import EventMarker
 from app.log_writer.log_writer import LogWriter
 from app.logger import setup_logging
 from app.masterinjection.signal_processor import SignalProcessor
@@ -53,6 +54,10 @@ def main():
     app_window = AppWindow(signal_processor)
     app_window.show()
 
+    event_marker = EventMarker(config.datalog.mark_sound)
+    app_window.key_event.connect(event_marker.handle_key)
+    event_marker.event_triggered.connect(log_writer.set_event_pending)
+
     # dashboard = Dashboard(
     #     grid=GRID,
     #     graphs=GRAPH,
@@ -77,15 +82,11 @@ def main():
     # space_detector = KeyHoldDetector(Qt.Key.Key_Space, 2000)
     # space_detector.triggered.connect(lambda_toggle.handle_trigger)
 
-    # event_marker = EventMarker(EVENT_SOUND)
-    # event_marker.event_triggered.connect(log_writer.set_event_pending)
 
-    # app_window.key_event.connect(event_marker.handle_key)
     # app_window.key_event.connect(space_detector.on_key_pressed)
     # app_window.key_event.connect(ve_calibration_screen.handle_key)
     # app_window.key_released.connect(space_detector.on_key_released)
 
-    # dashboard.key_event.connect(event_marker.handle_key)
     # dashboard.key_event.connect(space_detector.on_key_pressed)
     # dashboard.key_released.connect(space_detector.on_key_released)
 

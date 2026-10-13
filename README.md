@@ -18,6 +18,7 @@ A real-time telemetry dashboard for the Master Injection ECU. Streams sensor dat
 - **VE map calibration** — live 16×16 VE map viewer with heatmap coloring, bilinear interpolation highlight of the current operating point, and keyboard-driven ±5 adjustments written to the ECU with a 1-second debounce
 - **Lambda loop control** — open and close the lambda loop from the VE calibration screen with a keystroke; plays a configurable sound on each command
 - **CSV logging** — one file per run; appends every ECU frame with a millisecond Unix timestamp and an optional event label
+- **Manual event marking** — press **Enter** on the Dashboard or the VE calibration screen to beep and stamp `MARK` on the next CSV row
 - **Automatic reconnection** — detects dropped Bluetooth connections and reconnects without restarting the app
 - **Mock mode** — replay a previously recorded CSV file instead of connecting to hardware
 
@@ -82,7 +83,8 @@ Settings are loaded from `config.json` in the working directory or from the file
     "sound": "alarm.wav"
   },
   "datalog": {
-    "path": "C:\\Datalogs"
+    "path": "C:\\Datalogs",
+    "mark_sound": "alarm.wav"
   },
   "dashboard": {
     "grid": [["RPM", "VSS", "MAP", "BOOST", "CLT", "IAT", "POWER"],
@@ -106,6 +108,7 @@ Settings are loaded from `config.json` in the working directory or from the file
 | `connection.mock_skip_lines` | Number of data lines (after the header) the mock skips the first time it plays the file, to start in an interesting region; default `0` |
 | `alarm.sound` | `.wav` file played during limit alarms |
 | `datalog.path` | Existing directory where the per-run CSV logs (`log_stream_YYYYMMDD_HHMMSS.csv`) are created |
+| `datalog.mark_sound` | `.wav` played when you mark an event with Enter; default `alarm.wav` |
 | `dashboard.grid` | 2-D list of signal names for the numeric display grid |
 | `dashboard.graph` | List of row groups (each group shares one plot) |
 | `dashboard.graph_x_size` | Number of samples kept in each graph buffer |
@@ -151,7 +154,9 @@ Live VE (Volumetric Efficiency) map viewer and editor. Allows real-time adjustme
 
 | Key | Screen | Action |
 |-----|--------|--------|
+| **Esc** | Home | Exit the app |
 | **Esc** | Dashboard, VE Calibration | Return to Home screen |
+| **Enter** | Dashboard, VE Calibration | Beep + stamp `MARK` on the next CSV row |
 | **↑ / ↓** | Home | Navigate menu |
 | **Enter** | Home | Open selected screen |
 | **↑ / ↓** | VE Calibration | Adjust VE ±5 raw units (0.5 %) at the current operating point |
