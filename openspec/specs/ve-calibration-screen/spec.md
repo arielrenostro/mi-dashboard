@@ -25,11 +25,15 @@ While the screen is active, every 100 ms it SHALL: read RPM and MAP from the sha
 - **THEN** the refresh cycle stops
 
 ### Requirement: Top bar
-The top bar SHALL show seven cards in order: RPM, MAP, VE, LAMBDA, LAMBDA_TARGET, FUEL_TRIM, LAMBDA_LOOP, each with the signal's display string. The LAMBDA_LOOP value SHALL be green when its raw value is `1` and orange otherwise.
+The top bar SHALL show seven cards in order: RPM, MAP, VE, LAMBDA, LAMBDA_TARGET, FUEL_TRIM, LAMBDA_LOOP, each with the signal's display string. The LAMBDA_LOOP value SHALL be green when its raw value is `1` or `2` and orange otherwise.
 
 #### Scenario: Open loop
 - **WHEN** the lambda loop value is `0`
 - **THEN** the LAMBDA_LOOP card is orange and reads `Open`
+
+#### Scenario: Closed loop with correction
+- **WHEN** the lambda loop value is `2`
+- **THEN** the LAMBDA_LOOP card is green and reads `Closed+C`
 
 ### Requirement: VE table
 The table SHALL be a non-editable, non-selectable 16x16 grid of VE cells showing raw integers. Columns SHALL be labeled with the RPM axis (ascending left to right) and rows with the MAP axis, with the highest MAP at the top. Cell backgrounds SHALL be a heatmap of the current map values from green (lowest) through yellow to dark red (highest). Cells with an interpolation weight SHALL be tinted toward orange (`#FF6600`) proportionally to the weight. Visually modified cells SHALL have cyan text (`#00CCFF`) and all others white (see design.md, Known issues, for a column exception).

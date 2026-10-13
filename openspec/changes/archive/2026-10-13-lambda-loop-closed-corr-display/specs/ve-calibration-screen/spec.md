@@ -9,4 +9,4 @@ The top bar SHALL show seven cards in order: RPM, MAP, VE, LAMBDA, LAMBDA_TARGET
 
 #### Scenario: Closed loop with correction
 - **WHEN** the lambda loop value is `2`
-- **THEN** the LAMBDA_LOOP card is green and reads `Closed+Corr`
+- **THEN** the LAMBDA_LOOP card is green and reads `Closed+C`

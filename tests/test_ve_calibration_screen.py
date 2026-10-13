@@ -165,14 +165,32 @@ def test_top_bar_has_the_seven_signals_in_order(ve_screen):
     ]
 
 
-@pytest.mark.parametrize("loop,color", [(0, "#FF8800"), (1, "#00FF00")])
-def test_lambda_loop_card_color(ve_screen, loop, color):
-    """Scenario: Open loop."""
+@pytest.mark.parametrize(
+    "loop,color,text",
+    [
+        (0, "#FF8800", "Open"),  # scenario: Open loop
+        (1, "#00FF00", "Closed"),
+        (2, "#00FF00", "Closed+C"),  # scenario: Closed loop with correction
+    ],
+)
+def test_lambda_loop_card_color_and_text(ve_screen, loop, color, text):
+    """Requirement: Top bar (green for values 1 and 2, orange otherwise)."""
     vehicle_state.update({Signal.LAMBDA_LOOP: parsed(Signal.LAMBDA_LOOP, loop)})
 
     ve_screen._update_top_bar()
 
-    assert color in ve_screen._top_bar_labels[Signal.LAMBDA_LOOP].big_label.styleSheet()
+    card = ve_screen._top_bar_labels[Signal.LAMBDA_LOOP].big_label
+    assert color in card.styleSheet()
+    assert card.text() == text
+
+
+def test_lambda_loop_card_turns_green_when_the_loop_closes(ve_screen):
+    """Requirement: Top bar (color follows the ECU-reported value)."""
+    card = ve_screen._top_bar_labels[Signal.LAMBDA_LOOP].big_label
+    for loop, color in [(0, "#FF8800"), (2, "#00FF00"), (0, "#FF8800")]:
+        vehicle_state.update({Signal.LAMBDA_LOOP: parsed(Signal.LAMBDA_LOOP, loop)})
+        ve_screen._update_top_bar()
+        assert color in card.styleSheet()
 
 
 def test_top_bar_shows_display_strings(ve_screen):

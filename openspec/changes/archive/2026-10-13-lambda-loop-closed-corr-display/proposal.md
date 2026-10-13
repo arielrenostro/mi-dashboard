@@ -4,7 +4,7 @@ The ECU reports lambda loop value `2` for "closed with automatic correction", bu
 
 ## What Changes
 
-- Display string for value `2` becomes `Closed+Corr` (value `1` stays `Closed`, anything else `Open`).
+- Display string for value `2` becomes `Closed+C` (value `1` stays `Closed`, anything else `Open`).
 - The VE calibration top bar paints the lambda loop value green for `1` and `2`.
 
 ## Capabilities

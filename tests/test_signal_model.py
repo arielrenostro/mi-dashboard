@@ -54,6 +54,7 @@ def test_catalog_has_no_unlisted_direct_signals():
         (Signal.PEDAL, "1200", 100.0, "100.0"),  # scenario: Pedal clamp
         (Signal.LAMBDA_LOOP, "0", 0, "Open"),  # scenario: Open loop
         (Signal.LAMBDA_LOOP, "1", 1, "Closed"),  # scenario: Closed loop
+        (Signal.LAMBDA_LOOP, "2", 2, "Closed+C"),  # scenario: Closed loop with automatic correction
         (Signal.GEAR, "4", 4, "4"),
     ],
 )

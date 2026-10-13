@@ -15,7 +15,7 @@ The system SHALL define these direct signals. Alarm columns give whether the ala
 | CLT | CLT | 19 | ºC | integer - 273 | `{v}` | -20..120 | orange | yes | 0 | 95 |
 | IAT | IAT | 20 | ºC | integer - 273 | `{v}` | -20..120 | DodgerBlue | no | 0 | 80 |
 | VSS | Speed | 23 | km/h | integer | `{v}` | 0..200 | blue | yes | 0 | 150 |
-| LAMBDA_LOOP | λ Loop | 24 | - | integer | `Closed` if v = 1, `Closed+Corr` if v = 2, else `Open` | 0..2 | orange | no | - | - |
+| LAMBDA_LOOP | λ Loop | 24 | - | integer | `Closed` if v = 1, `Closed+C` if v = 2, else `Open` | 0..2 | orange | no | - | - |
 | LAMBDA_TARGET | λ Target | 25 | λ | raw/1000 | `{v:.2f}` | 0.5..1.5 | blue | no | 0.70 | 1.30 |
 | FUEL_TRIM | Fuel Trim | 26 | % | (raw - 1000)/10 | `{v:.1f}` | -20..20 | gray | yes | -20 | 20 |
 | BOOST_TARGET | Boost Target | 28 | kPa | integer | `{v}` | 20..250 | MediumSeaGreen | no | - | - |
@@ -39,7 +39,7 @@ The system SHALL define these direct signals. Alarm columns give whether the ala
 - **THEN** PEDAL is `100.0`
 
 ### Requirement: Lambda loop values
-The LAMBDA_LOOP raw value SHALL mean: `0` open loop, `1` closed loop, `2` closed loop with automatic correction. The display string SHALL be `Closed` for value `1`, `Closed+Corr` for value `2`, and `Open` for every other value.
+The LAMBDA_LOOP raw value SHALL mean: `0` open loop, `1` closed loop, `2` closed loop with automatic correction. The display string SHALL be `Closed` for value `1`, `Closed+C` for value `2`, and `Open` for every other value.
 
 #### Scenario: Open loop
 - **WHEN** field 24 is `0`
@@ -51,4 +51,4 @@ The LAMBDA_LOOP raw value SHALL mean: `0` open loop, `1` closed loop, `2` closed
 
 #### Scenario: Closed loop with automatic correction
 - **WHEN** field 24 is `2`
-- **THEN** the display string is `Closed+Corr`
+- **THEN** the display string is `Closed+C`

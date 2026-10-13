@@ -167,7 +167,7 @@ class Signal(enum.Enum):
         "name": "λ Loop",
         "index": 24,
         "converter": lambda x: int(x),
-        "for_label": lambda x: 'Closed' if x == 1 else 'Open',
+        "for_label": lambda x: {1: 'Closed', 2: 'Closed+C'}.get(x, 'Open'),
         "unit": "",
         "min": 0,
         "max": 2,
