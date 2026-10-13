@@ -137,7 +137,7 @@ class EcuConnectionSerial(EcuConnection):
 
     def _fetch_ve_map(self):
         logger.debug("Obtendo VE map...")
-        for i in range(1, 16):
+        for i in range(1, 17):
             cmd = EcuCommand[f"VE_ROW_{i}"]
             resp = self._send_and_retry(cmd, [EcuResponse[f"VE_ROW_{i}"]])
             if resp and len(resp) > 0:

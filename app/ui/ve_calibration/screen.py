@@ -396,12 +396,12 @@ class VeCalibrationScreen(Screen):
             if data:
                 card.set_value(data.value_str)
 
-                # Colour LAMBDA_LOOP: green = Closed, orange = Open
+                # Colour LAMBDA_LOOP: green = Closed (1) or Closed+C (2), orange = Open
                 if signal is Signal.LAMBDA_LOOP:
-                    if data.value == 1:
+                    if data.value in (1, 2):
                         card.set_text_color("#00FF00")  # green
                     else:
-                        card.set_text_color("#FF8800")  # green
+                        card.set_text_color("#FF8800")  # orange
 
     def _adjust_ve(self, delta: float):
         from app.state.state import vehicle_state
