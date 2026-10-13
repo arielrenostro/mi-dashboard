@@ -48,11 +48,10 @@ def main():
     else:
         register_ecu_connection(EcuConnectionSerial(config.connection.port, config.connection.baudrate))
 
-    # TODO -> Registrar na instancia de dashboard
-    # alarm_processor.emitter.connect(dashboard.fire_field_alarm)
-
     app_window = AppWindow(signal_processor)
     app_window.show()
+
+    alarm_processor.emitter.connect(app_window.on_alarm_onset)
 
     event_marker = EventMarker(config.datalog.mark_sound)
     app_window.key_event.connect(event_marker.handle_key)

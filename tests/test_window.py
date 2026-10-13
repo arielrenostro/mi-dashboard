@@ -202,3 +202,31 @@ def test_screen_still_handles_the_key_that_was_announced(window, pressed):
 
     assert pressed == [int(Qt.Key.Key_Escape)]
     assert window._current_screen_name == "home"
+
+
+# ------------------------------------------------------------------ alarm onset
+
+def test_alarm_onset_reaches_the_dashboard(window):
+    """Requirement: Visual alarm flash (the window forwards the onset to the Dashboard)."""
+    from app.masterinjection.signal import Signal
+
+    window._screens["dashboard"].fire_field_alarm = Mock()
+
+    window.on_alarm_onset(Signal.RPM)
+
+    window._screens["dashboard"].fire_field_alarm.assert_called_once_with(Signal.RPM)
+
+
+def test_real_alarm_processor_onset_flashes_the_dashboard_card(window, processor):
+    """The wiring main() creates: alarm processor -> window -> Dashboard card."""
+    from app.alarm.processor import AlarmProcessor
+    from app.masterinjection.signal import Signal
+    from tests.helpers import parsed
+
+    alarm = AlarmProcessor("does-not-exist.wav")
+    alarm.emitter.connect(window.on_alarm_onset)
+    window._screens["dashboard"].fire_field_alarm = Mock()
+
+    alarm.process_signals({Signal.RPM: parsed(Signal.RPM, 6700)})
+
+    window._screens["dashboard"].fire_field_alarm.assert_called_once_with(Signal.RPM)

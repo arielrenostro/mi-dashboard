@@ -14,7 +14,7 @@ A real-time telemetry dashboard for the Master Injection ECU. Streams sensor dat
 
 - **Full-screen live display** — large high-contrast numeric values with automatic color coding (green = in range, red = out of limits)
 - **Real-time graphs** — multi-axis buffered plots with peak/min markers, updated every 100 ms
-- **Audible alarms** — plays a `.wav` file while any signal stays outside its configured limits; the alarm stays active for 2 seconds after the last out-of-range reading
+- **Audible and visual alarms** — plays a `.wav` file while any signal with an enabled alarm stays outside its limits, and the signal's card on the Dashboard flashes black/yellow; the alarm stays active for 2 seconds after the last out-of-range reading
 - **VE map calibration** — live 16×16 VE map viewer with heatmap coloring, bilinear interpolation highlight of the current operating point, and keyboard-driven ±5 adjustments written to the ECU with a 1-second debounce
 - **Lambda loop control** — open and close the lambda loop from the VE calibration screen with a keystroke; plays a configurable sound on each command
 - **CSV logging** — one file per run; appends every ECU frame with a millisecond Unix timestamp and an optional event label
@@ -136,7 +136,7 @@ The entry point of the application. Displays the app title, connection status, a
 
 Full-screen live telemetry display. Shows the configured signals as numeric cards and plots them on real-time graphs.
 
-- **Signal grid** — rows and columns configured in `dashboard.grid`. Each cell shows the signal name, current value, and unit.
+- **Signal grid** — rows and columns configured in `dashboard.grid`. Each cell shows the signal name, current value, and unit. A value outside its limits turns red; if the signal has an alarm enabled, its card also flashes while the alarm is active.
 - **Graphs** — one plot per group in `dashboard.graph`. Each plot can show multiple signals on independent Y-axes (right-side), with a shared X-axis. Peak and minimum markers with value labels float over each curve. Graphs refresh every 100 ms.
 
 ### VE Calibration Screen

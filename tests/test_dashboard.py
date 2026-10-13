@@ -4,8 +4,11 @@ from unittest.mock import Mock
 import pytest
 from PyQt6.QtCore import Qt
 
+import app.state.state as state_module
+import app.ui.dashboard.screen as dashboard_module
 from app.masterinjection.signal import Signal
 from app.masterinjection.signal_processor import SignalProcessor
+from app.state.state import vehicle_state
 from app.ui.dashboard.screen import DashboardScreen
 from tests.helpers import SAMPLE_FRAME, frame_with, key_press
 
@@ -199,3 +202,198 @@ def test_other_keys_do_nothing(dashboard, key):
     dashboard.keyPressEvent(key_press(key))
 
     dashboard.close.assert_not_called()
+
+
+# ------------------------------------------------- out-of-limit color (alarm-enabled)
+
+def text_style(screen, signal):
+    return screen.labels[signal].big_label.styleSheet()
+
+
+def card_background(screen, signal):
+    return screen.labels[signal].styleSheet()
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(state_module.time, "time", lambda: now[0])
+    return now
+
+
+def test_alarm_enabled_signal_above_its_limit_is_red(dashboard):
+    """Scenario: Alarm-enabled signal above its limit."""
+    feed(dashboard, frame_with({19: 273 + 100}))  # CLT 100, limit 95, alarm enabled
+
+    assert "color:red;" in text_style(dashboard, Signal.CLT)
+
+
+def test_alarm_enabled_signal_is_red_when_the_alarm_is_already_firing(dashboard, clock):
+    """Requirement: Out-of-limit color (the alarm processor marks the alarm before the dashboard sees the frame)."""
+    vehicle_state.set_alarm(Signal.CLT, True)
+
+    feed(dashboard, frame_with({19: 273 + 100}))
+
+    assert "color:red;" in text_style(dashboard, Signal.CLT)
+
+
+def test_signal_returns_to_its_color_after_the_alarm_window(dashboard, clock):
+    """Scenario: Back within limits (alarm-enabled signal)."""
+    vehicle_state.set_alarm(Signal.CLT, True)
+    feed(dashboard, frame_with({19: 273 + 100}))
+    clock[0] += 2.5  # the 2 s firing window has elapsed
+
+    feed(dashboard)  # CLT 87, within limits
+
+    assert "color:orange;" in text_style(dashboard, Signal.CLT)
+
+
+def test_color_is_left_to_the_flash_while_the_alarm_is_still_firing(dashboard, clock):
+    """Requirement: Out-of-limit color (while a flash is running the flash controls the colors)."""
+    vehicle_state.set_alarm(Signal.CLT, True)
+    feed(dashboard, frame_with({19: 273 + 100}))
+    assert "color:red;" in text_style(dashboard, Signal.CLT)
+
+    feed(dashboard)  # back within limits, but the alarm window is still open
+
+    assert "color:red;" in text_style(dashboard, Signal.CLT)
+
+
+# ------------------------------------------------------------------ alarm flash
+
+class FakeTimers:
+    """Stands in for QTimer so the 200 ms flash chain can be driven step by step."""
+
+    def __init__(self):
+        self.pending = []
+
+    def singleShot(self, ms, callback):
+        self.pending.append((ms, callback))
+
+    def run_next(self):
+        ms, callback = self.pending.pop(0)
+        callback()
+        return ms
+
+
+@pytest.fixture
+def timers(dashboard, monkeypatch):
+    fake = FakeTimers()
+    monkeypatch.setattr(dashboard_module, "QTimer", fake)
+    return fake
+
+
+def test_flash_starts_immediately(dashboard, timers, clock):
+    """Scenario: Flash starts."""
+    vehicle_state.set_alarm(Signal.RPM, True)
+
+    dashboard.fire_field_alarm(Signal.RPM)
+
+    assert [ms for ms, _ in timers.pending] == [0]
+
+
+def test_card_alternates_black_and_yellow_every_200ms_with_red_text(dashboard, timers, clock):
+    """Scenario: Flash starts (alternation every 200 ms)."""
+    vehicle_state.set_alarm(Signal.CLT, True)
+    dashboard.fire_field_alarm(Signal.CLT)
+
+    backgrounds, delays = [], []
+    for _ in range(6):
+        delays.append(timers.run_next())
+        backgrounds.append(card_background(dashboard, Signal.CLT))
+        assert "color:red;" in text_style(dashboard, Signal.CLT)
+
+    assert backgrounds == ["background-color:black;", "background-color:yellow;"] * 3
+    assert delays == [0] + [200] * 5
+
+
+def test_flash_ends_with_a_black_background_when_the_alarm_stops(dashboard, timers, clock):
+    """Scenario: Flash ends."""
+    vehicle_state.set_alarm(Signal.CLT, True)
+    dashboard.fire_field_alarm(Signal.CLT)
+    timers.run_next()
+    timers.run_next()  # yellow
+    assert card_background(dashboard, Signal.CLT) == "background-color:yellow;"
+
+    clock[0] += 2.5  # alarm no longer firing
+    timers.run_next()
+
+    assert card_background(dashboard, Signal.CLT) == "background-color:black;"
+    assert timers.pending == []
+
+
+def test_value_color_follows_the_limit_rule_after_the_flash(dashboard, timers, clock):
+    """Requirement: Visual alarm flash (value color follows the out-of-limit rule afterwards)."""
+    vehicle_state.set_alarm(Signal.CLT, True)
+    feed(dashboard, frame_with({19: 273 + 100}))
+    dashboard.fire_field_alarm(Signal.CLT)
+    timers.run_next()
+    clock[0] += 2.5
+    timers.run_next()  # the chain ends, the text is still red from the last tick
+
+    feed(dashboard)  # CLT back to 87
+
+    assert "color:orange;" in text_style(dashboard, Signal.CLT)
+
+
+def test_signal_without_a_card_does_not_flash(dashboard, timers, clock):
+    """Scenario: Signal not in grid."""
+    assert Signal.IGN not in dashboard.labels
+    vehicle_state.set_alarm(Signal.IGN, True)
+
+    dashboard.fire_field_alarm(Signal.IGN)
+
+    assert timers.pending == []
+
+
+def test_a_second_onset_while_flashing_does_not_start_a_second_chain(dashboard, timers, clock):
+    vehicle_state.set_alarm(Signal.CLT, True)
+    dashboard.fire_field_alarm(Signal.CLT)
+
+    dashboard.fire_field_alarm(Signal.CLT)
+
+    assert len(timers.pending) == 1
+
+
+def test_onset_right_after_the_alarm_ended_keeps_a_single_chain(dashboard, timers, clock):
+    """A new violation between the end of the firing window and the last tick of the old chain."""
+    vehicle_state.set_alarm(Signal.CLT, True)
+    dashboard.fire_field_alarm(Signal.CLT)
+    timers.run_next()
+    clock[0] += 2.1  # window elapsed, the old chain has not noticed yet
+    vehicle_state.set_alarm(Signal.CLT, True)  # violation again: a new onset is raised
+    dashboard.fire_field_alarm(Signal.CLT)
+
+    assert len(timers.pending) == 1
+
+
+def test_a_new_flash_can_start_after_the_previous_one_ended(dashboard, timers, clock):
+    vehicle_state.set_alarm(Signal.CLT, True)
+    dashboard.fire_field_alarm(Signal.CLT)
+    timers.run_next()
+    clock[0] += 2.5
+    timers.run_next()  # ends
+    assert timers.pending == []
+
+    vehicle_state.set_alarm(Signal.CLT, True)
+    dashboard.fire_field_alarm(Signal.CLT)
+
+    assert len(timers.pending) == 1
+
+
+def test_each_signal_flashes_independently(dashboard, timers, clock):
+    vehicle_state.set_alarm(Signal.CLT, True)
+    vehicle_state.set_alarm(Signal.RPM, True)
+    dashboard.fire_field_alarm(Signal.CLT)
+    dashboard.fire_field_alarm(Signal.RPM)
+
+    assert len(timers.pending) == 2
+
+
+def test_disabled_alarm_signal_is_red_but_never_flashes(dashboard, timers, clock):
+    """Scenario: Boost above its limit (no flash for a disabled alarm)."""
+    feed(dashboard, frame_with({3: 200}))
+
+    assert "color:red;" in text_style(dashboard, Signal.BOOST)
+    assert card_background(dashboard, Signal.BOOST) == "background-color:black;"
+    assert timers.pending == []

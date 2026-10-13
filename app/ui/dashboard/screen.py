@@ -46,6 +46,8 @@ class DashboardScreen(Screen):
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_graph)
 
+        self._flashing: set = set()  # signals with a flash chain running
+
     def on_activated(self):
         self.timer.start(100)
 
@@ -173,24 +175,18 @@ class DashboardScreen(Screen):
         alarm = signal.value["alarm"]
         color = signal.value["color"]
 
-        in_alarm = False
         min_ = alarm["min"] if alarm["min"] is None or isinstance(alarm["min"], (int, float)) else alarm["min"](value)
         max_ = alarm["max"] if alarm["max"] is None or isinstance(alarm["max"], (int, float)) else alarm["max"](value)
 
-        if min_ is not None and value < min_:
-            color = "red"
-            in_alarm = alarm["enabled"]
-
-        elif max_ is not None and value > max_:
-            color = "red"
-            in_alarm = alarm["enabled"]
+        out_of_limits = (min_ is not None and value < min_) or (max_ is not None and value > max_)
 
         card = self.labels[signal]
         card.set_value(data.value_str)
 
-        firing = vehicle_state.is_alarm_firing(signal)
-
-        if not in_alarm and not firing:
+        if out_of_limits:
+            card.set_text_color("red")
+        elif not vehicle_state.is_alarm_firing(signal):
+            # while the alarm is still firing the flash owns the card colors
             card.set_text_color(color)
 
     def update_graph(self):
@@ -228,15 +224,17 @@ class DashboardScreen(Screen):
 
     @Slot(Signal)
     def fire_field_alarm(self, signal):
-        if signal not in self.labels:
+        if signal not in self.labels or signal in self._flashing:
             return
 
         card = self.labels[signal]
+        self._flashing.add(signal)
 
         def _fn(i):
             def __fn():
                 if not vehicle_state.is_alarm_firing(signal):
                     card.setStyleSheet("background-color:black;")
+                    self._flashing.discard(signal)
                     return
                 QTimer.singleShot(200, _fn(i + 1))
                 card.set_text_color("red")

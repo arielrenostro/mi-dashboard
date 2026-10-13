@@ -59,6 +59,10 @@ class AppWindow(QWidget):
             ve_calibration_screen,
         )
 
+    def on_alarm_onset(self, signal):
+        """Forward the alarm onset notification to the Dashboard so the signal's card flashes."""
+        self._screens["dashboard"].fire_field_alarm(signal)
+
     def _register_screen(self, name: str, screen):
         self._screens[name] = screen
         self.stacked_widget.addWidget(screen)
