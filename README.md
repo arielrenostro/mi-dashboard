@@ -24,6 +24,20 @@ A real-time telemetry dashboard for the Master Injection ECU. Streams sensor dat
 - **Connection error alerts** — a square, dialog-like overlay shows the failure (port, error detail) for 2 seconds on whatever screen is active, without taking the keyboard; the same error is not repeated while it persists
 - **Mock mode** — replay a previously recorded CSV file instead of connecting to hardware
 
+### VE map calibration
+
+Live 16×16 VE map with heatmap coloring and the bilinear-interpolation highlight of the current operating point (orange). Cells edited with **↑ / ↓** show in cyan text and are written to the ECU one second after the last key press; the graph plots one curve per MAP row, with the live VE (lime) and the lambda-corrected VE λ (cyan, closed loop only).
+
+![VE calibration screen](assets/ve_calibration.png)
+
+### Ignition tuning
+
+Built for the road: hold a steady RPM in a fixed gear, raise the advance 1° at a time with **↑** and read, column by column, what the engine needed to keep the same speed. Each column is one advance offset, showing the analysed time, mean ignition, mean injection time, MAP, pedal, lambda and the knock counter increase, with the percentage difference to the best value of each sensor. The column with the lowest mean injection time gets the green border and the blue header marks the offset currently applied. **Space** pauses (hill ahead), **X** discards the worst column, **R** restores the original map. Sounds confirm each write, pause, discard and a column that gathered enough time, so the driver does not need to look at the screen.
+
+![Ignition tuning screen](assets/ignition_tuning.png)
+
+*Ignition tuning screenshot with illustrative data (six offsets, 0° to +5°, best result at +4°), not a real tuning session.*
+
 ---
 
 ## Requirements
