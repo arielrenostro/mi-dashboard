@@ -48,7 +48,7 @@
         "LAMBDA",
         "LAMBDA_TARGET",
         "FUEL_TRIM",
-        "BOOST_TARGET",
+        "OIL_PRESSURE",
         "INJ_UTIL",
         "IGN",
         "TORQUE"

@@ -33,6 +33,7 @@ The system SHALL define these direct signals. Alarm columns give whether the ala
 | INJ_UTIL | Inj. Duty | 8 | % | integer | `{v}` | 0..100 | lime | yes | -999 | 90 |
 | VE | VE | 9 | % | raw/10 | `{v:.1f}` | 0..1200 | lime | no | - | - |
 | IGN | Ign | 10 | º | integer | `{v}` | -45..45 | lime | no | 0 | 40 |
+| OIL_PRESSURE | Oil Pressure | 16 | Bar | raw/100 | `{v:.2f}` | 0..10 | lime | no | 0 | 40 |
 | CLT | CLT | 19 | ºC | integer - 273 | `{v}` | -20..120 | orange | yes | 0 | 95 |
 | IAT | IAT | 20 | ºC | integer - 273 | `{v}` | -20..120 | DodgerBlue | no | 0 | 80 |
 | VSS | Speed | 23 | km/h | integer | `{v}` | 0..200 | blue | yes | 0 | 150 |
@@ -46,6 +47,10 @@ The system SHALL define these direct signals. Alarm columns give whether the ala
 #### Scenario: Temperature conversion
 - **WHEN** field 19 is `342`
 - **THEN** CLT is `69` and displayed as `69`
+
+#### Scenario: Oil pressure conversion
+- **WHEN** field 16 is `350`
+- **THEN** OIL_PRESSURE is `3.5` and displayed as `3.50`
 
 #### Scenario: Lambda conversion
 - **WHEN** field 6 is `903`
