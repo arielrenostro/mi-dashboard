@@ -10,6 +10,11 @@ from app.state.state import vehicle_state
 logger = logging.getLogger(__name__)
 
 
+def _mock_ignition_row(row: int) -> list:
+    """Fixed ignition row for development: less advance as MAP (row) rises, a bit more as RPM (column) rises."""
+    return [max(5, 34 - 2 * row + col // 2) for col in range(16)]
+
+
 class EcuConnectionMock(EcuConnection):
 
     def __init__(self, mock_file, skip_lines: int = 0):
@@ -67,6 +72,9 @@ class EcuConnectionMock(EcuConnection):
         ve_map = vehicle_state.get_ve_map()
         for i, ve_line in reversed(list(enumerate(ve_map))):
             logger.info(f"Fuel Map: {i} {ve_line}")
+
+        for ign_idx in range(16):
+            vehicle_state.set_ignition_row(_mock_ignition_row(ign_idx), ign_idx)
 
         with open(self.mock_file, 'r') as f:
             log_origin = "master"

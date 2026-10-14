@@ -134,3 +134,51 @@ def test_mark_sound_is_loaded_from_the_file(workdir):
     cfg = _setup_config()
 
     assert (cfg.datalog.path, cfg.datalog.mark_sound) == ("logs", "mark.wav")
+
+
+# ---------------------------------------------------------------- ignition tuning
+
+def test_ignition_tuning_defaults_apply_without_the_section(workdir):
+    """Scenario: Ignition tuning defaults."""
+    cfg = _setup_config().ignition_tuning
+
+    assert (cfg.rpm_min, cfg.rpm_max, cfg.gear) == (2900, 3100, 5)
+    assert (cfg.max_map_kpa, cfg.max_ignition) == (70, 50)
+    assert (cfg.settle_seconds, cfg.min_scenario_seconds) == (5, 20)
+    assert (cfg.write_sound, cfg.ready_sound, cfg.pause_sound, cfg.resume_sound, cfg.discard_sound) == ("alarm.wav",) * 5
+
+
+def test_ignition_tuning_band_is_loaded_from_the_file(workdir):
+    """Scenario: Ignition tuning band configured."""
+    write_json(workdir / "config.json", {"ignition_tuning": {"rpm_min": 3400, "rpm_max": 3600}})
+
+    cfg = _setup_config().ignition_tuning
+
+    assert (cfg.rpm_min, cfg.rpm_max) == (3400, 3600)
+
+
+def test_ignition_tuning_missing_keys_take_their_default_independently(workdir):
+    """Requirement: Per-key defaults (partial ignition_tuning section)."""
+    write_json(workdir / "config.json", {"ignition_tuning": {"gear": 4, "ready_sound": "ready.wav"}})
+
+    cfg = _setup_config().ignition_tuning
+
+    assert (cfg.gear, cfg.ready_sound) == (4, "ready.wav")
+    assert (cfg.rpm_min, cfg.rpm_max, cfg.write_sound) == (2900, 3100, "alarm.wav")
+
+
+def test_every_ignition_tuning_setting_is_loaded(workdir):
+    """Requirement: Supported settings (all ignition_tuning keys)."""
+    write_json(workdir / "config.json", {"ignition_tuning": {
+        "rpm_min": 1, "rpm_max": 2, "gear": 3, "max_map_kpa": 4, "max_ignition": 5,
+        "settle_seconds": 6, "min_scenario_seconds": 7,
+        "write_sound": "w.wav", "ready_sound": "r.wav", "pause_sound": "p.wav", "resume_sound": "u.wav",
+        "discard_sound": "d.wav",
+    }})
+
+    cfg = _setup_config().ignition_tuning
+
+    assert (cfg.rpm_min, cfg.rpm_max, cfg.gear, cfg.max_map_kpa, cfg.max_ignition) == (1, 2, 3, 4, 5)
+    assert (cfg.settle_seconds, cfg.min_scenario_seconds) == (6, 7)
+    assert (cfg.write_sound, cfg.ready_sound, cfg.pause_sound, cfg.resume_sound, cfg.discard_sound) == (
+        "w.wav", "r.wav", "p.wav", "u.wav", "d.wav")

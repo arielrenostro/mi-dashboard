@@ -29,6 +29,23 @@ class EcuCommand(enum.Enum):
     VE_ROW_15 = ("#F15", "VE 15 line")
     VE_ROW_16 = ("#F16", "VE 16 line")
 
+    IGN_ROW_1 = ("#I01", "Ignition 1 line")
+    IGN_ROW_2 = ("#I02", "Ignition 2 line")
+    IGN_ROW_3 = ("#I03", "Ignition 3 line")
+    IGN_ROW_4 = ("#I04", "Ignition 4 line")
+    IGN_ROW_5 = ("#I05", "Ignition 5 line")
+    IGN_ROW_6 = ("#I06", "Ignition 6 line")
+    IGN_ROW_7 = ("#I07", "Ignition 7 line")
+    IGN_ROW_8 = ("#I08", "Ignition 8 line")
+    IGN_ROW_9 = ("#I09", "Ignition 9 line")
+    IGN_ROW_10 = ("#I10", "Ignition 10 line")
+    IGN_ROW_11 = ("#I11", "Ignition 11 line")
+    IGN_ROW_12 = ("#I12", "Ignition 12 line")
+    IGN_ROW_13 = ("#I13", "Ignition 13 line")
+    IGN_ROW_14 = ("#I14", "Ignition 14 line")
+    IGN_ROW_15 = ("#I15", "Ignition 15 line")
+    IGN_ROW_16 = ("#I16", "Ignition 16 line")
+
     @property
     def description(self) -> str:
         return self.value[1]
@@ -63,3 +80,20 @@ class EcuResponse(enum.Enum):
     VE_ROW_14 = "#F14"
     VE_ROW_15 = "#F15"
     VE_ROW_16 = "#F16"
+
+    IGN_ROW_1 = "#I01"
+    IGN_ROW_2 = "#I02"
+    IGN_ROW_3 = "#I03"
+    IGN_ROW_4 = "#I04"
+    IGN_ROW_5 = "#I05"
+    IGN_ROW_6 = "#I06"
+    IGN_ROW_7 = "#I07"
+    IGN_ROW_8 = "#I08"
+    IGN_ROW_9 = "#I09"
+    IGN_ROW_10 = "#I10"
+    IGN_ROW_11 = "#I11"
+    IGN_ROW_12 = "#I12"
+    IGN_ROW_13 = "#I13"
+    IGN_ROW_14 = "#I14"
+    IGN_ROW_15 = "#I15"
+    IGN_ROW_16 = "#I16"

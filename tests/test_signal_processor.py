@@ -22,6 +22,17 @@ def test_valid_frame_publishes_one_set_with_every_signal(processor):
     assert set(processor.published[0]) == set(Signal)
 
 
+def test_injection_pulse_and_knock_are_read_from_their_frame_positions(processor):
+    """Requirement: Direct signal catalog (INJ_PULSE at position 7, KNOCK at position 11)."""
+    processor.process_line(frame_with({7: 107, 11: 42}))
+    data = processor.published[0]
+
+    assert data[Signal.INJ_PULSE].value == pytest.approx(1.07)
+    assert data[Signal.INJ_PULSE].value_str == "1.07"
+    assert data[Signal.KNOCK].value == 42
+    assert data[Signal.KNOCK].raw == "42"
+
+
 def test_parsed_signal_carries_raw_value_and_display(processor):
     """Requirement: Frame parsing (raw text, converted value and display string)."""
     processor.process_line(SAMPLE_FRAME)

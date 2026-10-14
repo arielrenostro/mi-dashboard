@@ -5,6 +5,7 @@ class EventType(Enum):
     MAP_BREAKPOINTS = 0
     RPM_BREAKPOINTS = 1
     FUEL_MAP = 3
+    IGNITION_MAP = 4
 
 
 class VehicleStateChangeEvent:

@@ -67,6 +67,22 @@ class Signal(enum.Enum):
         },
     }
 
+    INJ_PULSE = {
+        "name": "Inj. Pulse",
+        "index": 7,
+        "converter": lambda x: float(x) / 100,
+        "for_label": lambda x: f'{x:.2f}',
+        "unit": "ms",
+        "min": 0,
+        "max": 20,
+        "color": "gold",
+        "alarm": {
+            "enabled": False,
+            "min": None,
+            "max": None,
+        },
+    }
+
     INJ_UTIL = {
         "name": "Inj. Duty",
         "index": 8,
@@ -112,6 +128,22 @@ class Signal(enum.Enum):
             "enabled": False,
             "min": 0,
             "max": 40,
+        },
+    }
+
+    KNOCK = {
+        "name": "Knock",
+        "index": 11,
+        "converter": lambda x: int(x),
+        "for_label": lambda x: f'{x}',
+        "unit": "",
+        "min": 0,
+        "max": 1000,
+        "color": "red",
+        "alarm": {
+            "enabled": False,
+            "min": None,
+            "max": None,
         },
     }
 

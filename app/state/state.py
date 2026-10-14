@@ -24,6 +24,7 @@ class VehicleState:
         self._rpm_breakpoints: list[int] = [0 for _ in range(16)]
         self._map_breakpoints: list[int] = [0 for _ in range(16)]
         self._ve_map: list[list[int]] = [[0 for _ in range(16)] for _ in range(16)]
+        self._ignition_map: list[list[int]] = [[0 for _ in range(16)] for _ in range(16)]
 
     @property
     def emitter(self):
@@ -88,6 +89,19 @@ class VehicleState:
         with self._lock:
             self._ve_map[ve_idx] = ve_line
             self.emitter.emit(VehicleStateChangeEvent(EventType.FUEL_MAP, [ve_idx, ve_line]))
+
+    def get_ignition_map(self) -> list[list[int]]:
+        with self._lock:
+            return self._ignition_map
+
+    def set_ignition_row(self, ign_line: list[int], ign_idx: int) -> None:
+        if len(ign_line) != 16:
+            return
+        if not 0 <= ign_idx <= 15:
+            return
+        with self._lock:
+            self._ignition_map[ign_idx] = ign_line
+            self.emitter.emit(VehicleStateChangeEvent(EventType.IGNITION_MAP, [ign_idx, ign_line]))
 
 
 vehicle_state = VehicleState()

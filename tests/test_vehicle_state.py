@@ -119,6 +119,37 @@ def test_ve_row_with_wrong_length_is_ignored(events):
     assert events == []
 
 
+def test_ignition_map_starts_at_zero():
+    """Requirement: Axis breakpoints and VE map (the ignition map is 16x16 of zeros)."""
+    assert vehicle_state.get_ignition_map() == [[0] * 16 for _ in range(16)]
+
+
+def test_setting_an_ignition_row_emits_event(events):
+    """Scenario: Ignition row loaded."""
+    row = list(range(10, 26))
+    vehicle_state.set_ignition_row(row, 4)
+
+    assert vehicle_state.get_ignition_map()[4] == row
+    assert [(e.type_, e.args) for e in events] == [(EventType.IGNITION_MAP, [4, row])]
+
+
+def test_ignition_row_with_wrong_length_is_ignored(events):
+    """Scenario: Wrong ignition row length."""
+    vehicle_state.set_ignition_row([1] * 15, 4)
+
+    assert vehicle_state.get_ignition_map()[4] == [0] * 16
+    assert events == []
+
+
+@pytest.mark.parametrize("index", [-1, 16])
+def test_ignition_row_with_out_of_range_index_is_ignored(events, index):
+    """Requirement: Axis breakpoints and VE map (a row is stored at the given index only)."""
+    vehicle_state.set_ignition_row([1] * 16, index)
+
+    assert vehicle_state.get_ignition_map() == [[0] * 16 for _ in range(16)]
+    assert events == []
+
+
 def test_concurrent_updates_are_consistent():
     """Requirement: Thread safety (no lost or partial updates)."""
     errors = []

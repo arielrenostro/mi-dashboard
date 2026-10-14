@@ -57,6 +57,16 @@ def test_start_publishes_the_fixed_ve_map(tmp_path, sleeps):
     assert all(len(row) == 16 for row in ve_map)
 
 
+def test_start_publishes_a_fixed_ignition_map(tmp_path, sleeps):
+    """Requirement: Mock ignition map (16 rows of 16 values, lowest MAP first)."""
+    make_mock(write_log(tmp_path / "log.csv", 0)).run()
+    ignition_map = vehicle_state.get_ignition_map()
+
+    assert all(len(row) == 16 for row in ignition_map)
+    assert all(0 < value <= 50 for row in ignition_map for value in row)
+    assert ignition_map[0][0] > ignition_map[15][0]  # less advance at high MAP
+
+
 # ----------------------------------------------------------------------- replay
 
 def test_header_is_skipped_and_every_data_line_is_emitted_in_order(tmp_path, sleeps):

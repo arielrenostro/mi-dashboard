@@ -6,16 +6,17 @@ from app.masterinjection.signal_processor import SignalProcessor
 from app.ui.components.error_overlay import ErrorOverlay
 from app.ui.dashboard.screen import DashboardScreen
 from app.ui.home.screen import HomeScreen
+from app.ui.ignition_tuning.screen import IgnitionTuningScreen
 from app.ui.ve_calibration.screen import VeCalibrationScreen
 
 
 class AppWindow(QWidget):
     """Main application window that manages multiple screens."""
 
-    # Announces every non-repeating key press made on a data screen (Dashboard or VE calibration).
+    # Announces every non-repeating key press made on a data screen (Dashboard, VE calibration or ignition tuning).
     key_event = pyqtSignal(int)
 
-    _DATA_SCREENS = ("dashboard", "ve_calibration")
+    _DATA_SCREENS = ("dashboard", "ve_calibration", "ignition_tuning")
 
     def __init__(self, signal_processor: SignalProcessor):
         super().__init__()
@@ -40,6 +41,9 @@ class AppWindow(QWidget):
 
         ve_calibration_screen = VeCalibrationScreen(close_fn=lambda: self.show_screen("home"))
 
+        ignition_tuning_screen = IgnitionTuningScreen(close_fn=lambda: self.show_screen("home"))
+        self._signal_processor.emitter.connect(ignition_tuning_screen.on_signal_received)
+
         dashboard_screen = DashboardScreen(
             close_fn=lambda: self.show_screen("home"),
             grid=config.dashboard.grid,
@@ -59,6 +63,10 @@ class AppWindow(QWidget):
         self._register_screen(
             "ve_calibration",
             ve_calibration_screen,
+        )
+        self._register_screen(
+            "ignition_tuning",
+            ignition_tuning_screen,
         )
 
     def on_connection_error(self, message: str):

@@ -38,7 +38,7 @@ def test_home_shows_title_menu_and_hint(home):
     texts = label_texts(home)
 
     assert "Master Injection" in texts
-    assert texts.index("Dashboard") < texts.index("Calibração de VE")
+    assert texts.index("Dashboard") < texts.index("Calibração de VE") < texts.index("Ajuste de Ignição")
     assert "↑↓ Navegar | Enter Selecionar" in texts
 
 
@@ -60,8 +60,8 @@ def test_down_moves_to_next_item(home):
 
 def test_down_from_last_item_wraps_to_first(home):
     """Scenario: Wrap down."""
-    home.keyPressEvent(key_press(Qt.Key.Key_Down))
-    home.keyPressEvent(key_press(Qt.Key.Key_Down))
+    for _ in range(3):
+        home.keyPressEvent(key_press(Qt.Key.Key_Down))
     home.keyPressEvent(key_press(Qt.Key.Key_Return))
 
     assert home.requested == ["dashboard"]
@@ -72,7 +72,16 @@ def test_up_from_first_item_wraps_to_last(home):
     home.keyPressEvent(key_press(Qt.Key.Key_Up))
     home.keyPressEvent(key_press(Qt.Key.Key_Return))
 
-    assert home.requested == ["ve_calibration"]
+    assert home.requested == ["ignition_tuning"]
+
+
+def test_ignition_tuning_entry_opens_the_ignition_tuning_screen(home):
+    """Scenario: Ignition tuning entry."""
+    home.keyPressEvent(key_press(Qt.Key.Key_Down))
+    home.keyPressEvent(key_press(Qt.Key.Key_Down))
+    home.keyPressEvent(key_press(Qt.Key.Key_Return))
+
+    assert home.requested == ["ignition_tuning"]
 
 
 @pytest.mark.parametrize("enter", [Qt.Key.Key_Return, Qt.Key.Key_Enter])
@@ -119,10 +128,10 @@ def test_escape_does_not_disturb_the_menu_selection(home):
 
 def test_selected_item_is_highlighted_and_others_are_gray(home):
     """Requirement: Menu navigation (selected item style)."""
-    menu = [l for l in home.findChildren(QLabel) if l.text() in ("Dashboard", "Calibração de VE")]
+    menu = [l for l in home.findChildren(QLabel) if l.text() in ("Dashboard", "Calibração de VE", "Ajuste de Ignição")]
 
     assert "white" in menu[0].styleSheet() and "#1E90FF" in menu[0].styleSheet()
-    assert "gray" in menu[1].styleSheet()
+    assert "gray" in menu[1].styleSheet() and "gray" in menu[2].styleSheet()
 
     home.keyPressEvent(key_press(Qt.Key.Key_Down))
 
@@ -205,3 +214,4 @@ def test_status_refresh_runs_every_500ms_only_while_active(home):
 
     home.on_deactivated()
     assert not home._status_timer.isActive()
+

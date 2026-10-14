@@ -54,5 +54,12 @@
         "TORQUE"
       ]
     ]
+  },
+  "ignition_tuning": {
+    "write_sound": "resources/papaleguas.mp3",
+    "ready_sound": "resources/closed.wav",
+    "pause_sound": "resources/open.wav",
+    "resume_sound": "resources/closed.wav",
+    "discard_sound": "resources/open.wav"
   }
 }

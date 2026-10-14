@@ -10,9 +10,11 @@ CATALOG = [
     (Signal.MAP, 2, "kPa", 20, 250, "fuchsia", True, 0, 165),
     (Signal.BOOST, 3, "kPa", 20, 250, "blue", False, 0, 165),
     (Signal.LAMBDA, 6, "λ", 0.5, 1.5, "lime", False, 0.70, 9999.0),
+    (Signal.INJ_PULSE, 7, "ms", 0, 20, "gold", False, None, None),
     (Signal.INJ_UTIL, 8, "%", 0, 100, "lime", True, -999, 90),
     (Signal.VE, 9, "%", 0, 1200, "lime", False, None, None),
     (Signal.IGN, 10, "º", -45, 45, "lime", False, 0, 40),
+    (Signal.KNOCK, 11, "", 0, 1000, "red", False, None, None),
     (Signal.CLT, 19, "ºC", -20, 120, "orange", True, 0, 95),
     (Signal.IAT, 20, "ºC", -20, 120, "DodgerBlue", False, 0, 80),
     (Signal.VSS, 23, "km/h", 0, 200, "blue", True, 0, 150),
@@ -56,6 +58,8 @@ def test_catalog_has_no_unlisted_direct_signals():
         (Signal.LAMBDA_LOOP, "1", 1, "Closed"),  # scenario: Closed loop
         (Signal.LAMBDA_LOOP, "2", 2, "Closed+C"),  # scenario: Closed loop with automatic correction
         (Signal.GEAR, "4", 4, "4"),
+        (Signal.INJ_PULSE, "107", 1.07, "1.07"),  # scenario: Injection pulse conversion
+        (Signal.KNOCK, "42", 42, "42"),  # scenario: Knock counter
     ],
 )
 def test_conversion_and_display(signal, raw, value, display):

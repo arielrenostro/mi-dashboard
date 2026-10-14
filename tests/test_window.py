@@ -21,9 +21,9 @@ def window(qapp, processor):
     w.close()
 
 
-def test_window_registers_the_three_screens_and_starts_on_home(window):
+def test_window_registers_the_four_screens_and_starts_on_home(window):
     """Requirement: Full-screen multi-screen window."""
-    assert set(window._screens) == {"home", "dashboard", "ve_calibration"}
+    assert set(window._screens) == {"home", "dashboard", "ve_calibration", "ignition_tuning"}
     assert window._current_screen_name == "home"
     assert window.stacked_widget.currentWidget() is window._screens["home"]
 
@@ -301,3 +301,38 @@ def test_the_thread_error_signal_reaches_the_overlay(window, qapp):
     connection.report_error("Conexão perdida: link lost")
 
     assert window._error_overlay.isVisible()
+
+
+def test_home_entry_shows_the_ignition_tuning_screen(window):
+    """Scenario: Ignition tuning entry."""
+    window.keyPressEvent(key_press(Qt.Key.Key_Down))
+    window.keyPressEvent(key_press(Qt.Key.Key_Down))
+    window.keyPressEvent(key_press(Qt.Key.Key_Return))
+
+    assert window._current_screen_name == "ignition_tuning"
+    assert window._screens["ignition_tuning"]._active
+
+
+def test_escape_on_the_ignition_tuning_screen_returns_to_home(window):
+    """Scenario: Back from ignition tuning."""
+    window.show_screen("ignition_tuning")
+
+    window.keyPressEvent(key_press(Qt.Key.Key_Escape))
+
+    assert window._current_screen_name == "home"
+    assert not window._screens["ignition_tuning"]._active
+
+
+def test_telemetry_reaches_the_ignition_tuning_screen_only_while_it_is_active(window, processor):
+    """Requirement: Live refresh (telemetry is analysed only while the screen is active)."""
+    from tests.helpers import ignition_set
+
+    calls = []
+    window._screens["ignition_tuning"]._analysis.process = lambda *args: calls.append(args) or False
+
+    processor.emitter.emit(ignition_set())
+    assert calls == []
+
+    window.show_screen("ignition_tuning")
+    processor.emitter.emit(ignition_set())
+    assert len(calls) == 1

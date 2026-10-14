@@ -68,6 +68,10 @@ def ve_row(n):
     return [100 * n + col for col in range(16)]
 
 
+def ign_row(n):
+    return [10 + n + col for col in range(16)]
+
+
 def ecu_responder(text):
     """A well-behaved ECU."""
     if text == "#D50":
@@ -78,6 +82,8 @@ def ecu_responder(text):
         return ["#I20;" + ";".join(map(str, RPM_AXIS))]
     if text.startswith("#F"):
         return [f"#F{text[2:]};" + ";".join(map(str, ve_row(int(text[2:]))))]
+    if text.startswith("#I") and text not in ("#I20", "#I21"):
+        return [f"#I{text[2:]};" + ";".join(map(str, ign_row(int(text[2:]))))]
     if text == "#D01":
         return ["#D01;1;2"]
     return []
@@ -174,6 +180,18 @@ def test_command_is_written_after_the_next_complete_cycle(make_connection):
     assert port.written == ["#D06"]
 
 
+def test_ignition_row_write_is_sent_with_its_sixteen_values(make_connection):
+    """Scenario: Ignition row write."""
+    port = FakeSerial(lines=["#D01;1", "#D02;2"])
+    conn = make_connection(port)
+    conn.send_command(EcuCommand.IGN_ROW_3, list(range(20, 36)))
+
+    conn.run()
+    conn.run()
+
+    assert port.written == ["#I03;" + ";".join(map(str, range(20, 36)))]
+
+
 def test_commands_are_written_in_order(make_connection):
     """Scenario: Order."""
     port = FakeSerial(lines=["#D01;1", "#D02;2"])
@@ -267,7 +285,8 @@ def test_connect_performs_the_full_sequence_in_order(make_connection):
 
     conn.connect()
 
-    expected = ["#D50", "#I21", "#I20"] + [f"#F{n:02d}" for n in range(1, 17)] + ["#D01"]
+    expected = (["#D50", "#I21", "#I20"] + [f"#F{n:02d}" for n in range(1, 17)]
+                + [f"#I{n:02d}" for n in range(1, 17)] + ["#D01"])
     assert port.written == expected
     assert conn.get_connection_status() == EcuConnectionStatus.CONNECTED
 
@@ -293,6 +312,46 @@ def test_all_sixteen_ve_rows_are_requested(make_connection):
     assert port.written == [f"#F{n:02d}" for n in range(1, 17)]
     assert vehicle_state.get_ve_map()[15] == ve_row(16)
     assert vehicle_state.get_ve_map()[0] == ve_row(1)
+
+
+def test_connect_publishes_all_ignition_rows_before_streaming_starts(make_connection):
+    """Scenario: Ignition rows loaded before streaming."""
+    port = FakeSerial(responder=ecu_responder)
+    conn = make_connection(port)
+
+    conn.connect()
+
+    assert vehicle_state.get_ignition_map() == [ign_row(n) for n in range(1, 17)]
+    assert port.written.index("#I16") < port.written.index("#D01")
+
+
+def test_all_sixteen_ignition_rows_are_requested(make_connection):
+    """Requirement: Ignition row publication (row N goes to row index N-1)."""
+    port = FakeSerial(responder=ecu_responder)
+    conn = make_connection(port)
+
+    conn._fetch_ignition_map()
+
+    assert port.written == [f"#I{n:02d}" for n in range(1, 17)]
+    assert vehicle_state.get_ignition_map()[0] == ign_row(1)
+    assert vehicle_state.get_ignition_map()[15] == ign_row(16)
+
+
+def test_unanswered_ignition_row_request_is_resent(make_connection):
+    """Scenario: Silent ECU (ignition rows)."""
+    port = FakeSerial(responder=lambda t: [None] * 4 + ["#I03;" + ";".join(["7"] * 16)] if t == "#I03" else [])
+    conn = make_connection(port)
+
+    line = conn._send_and_retry(EcuCommand.IGN_ROW_3, [EcuResponse.IGN_ROW_3])
+
+    assert line == "#I03;" + ";".join(["7"] * 16)
+    assert port.written.count("#I03") == 2
+
+
+def test_ignition_response_prefixes_are_recognized():
+    """Requirement: Response catalog (#I01 to #I16)."""
+    assert [r.value for r in EcuResponse if r.name.startswith("IGN_ROW_")] == [f"#I{n:02d}" for n in range(1, 17)]
+    assert [c.cmd for c in EcuCommand if c.name.startswith("IGN_ROW_")] == [f"#I{n:02d}" for n in range(1, 17)]
 
 
 def test_status_goes_through_connecting_and_handshake(make_connection, monkeypatch):

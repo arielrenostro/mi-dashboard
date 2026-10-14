@@ -38,6 +38,23 @@ class AppConfigVeCalibration:
         self.open_sound: str = config_dict.get('open_sound', 'alarm.wav')
 
 
+class AppConfigIgnitionTuning:
+
+    def __init__(self, config_dict: dict):
+        self.rpm_min: int = config_dict.get('rpm_min', 2900)
+        self.rpm_max: int = config_dict.get('rpm_max', 3100)
+        self.gear: int = config_dict.get('gear', 5)
+        self.max_map_kpa: int = config_dict.get('max_map_kpa', 70)
+        self.max_ignition: int = config_dict.get('max_ignition', 50)
+        self.settle_seconds: float = config_dict.get('settle_seconds', 5)
+        self.min_scenario_seconds: float = config_dict.get('min_scenario_seconds', 20)
+        self.write_sound: str = config_dict.get('write_sound', 'alarm.wav')
+        self.ready_sound: str = config_dict.get('ready_sound', 'alarm.wav')
+        self.pause_sound: str = config_dict.get('pause_sound', 'alarm.wav')
+        self.resume_sound: str = config_dict.get('resume_sound', 'alarm.wav')
+        self.discard_sound: str = config_dict.get('discard_sound', 'alarm.wav')
+
+
 class AppConfigConnection:
 
     def __init__(self, config_dict: dict):
@@ -55,6 +72,7 @@ class AppConfig:
         self.connection = AppConfigConnection(config_dict.get('connection', {}))
         self.ve_calibration = AppConfigVeCalibration(config_dict.get('ve_calibration', {}))
         self.datalog = AppConfigDatalog(config_dict.get('datalog', {}))
+        self.ignition_tuning = AppConfigIgnitionTuning(config_dict.get('ignition_tuning', {}))
 
 
 def _setup_config():

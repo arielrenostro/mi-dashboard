@@ -18,7 +18,8 @@ A real-time telemetry dashboard for the Master Injection ECU. Streams sensor dat
 - **VE map calibration** — live 16×16 VE map viewer with heatmap coloring, bilinear interpolation highlight of the current operating point, and keyboard-driven ±5 adjustments written to the ECU with a 1-second debounce
 - **Lambda loop control** — open and close the lambda loop from the VE calibration screen with a keystroke; plays a configurable sound on each command
 - **CSV logging** — one file per run; appends every ECU frame with a millisecond Unix timestamp and an optional event label
-- **Manual event marking** — press **Enter** on the Dashboard or the VE calibration screen to beep and stamp `MARK` on the next CSV row
+- **Ignition tuning** — on-road search for the best spark advance at light load: one global advance offset (±1° per key press) applied to the ignition rows up to a MAP limit, with one column per offset comparing injection time, MAP and pedal at the same RPM and gear
+- **Manual event marking** — press **Enter** on the Dashboard, the VE calibration screen or the ignition tuning screen to beep and stamp `MARK` on the next CSV row
 - **Automatic reconnection** — detects dropped Bluetooth connections and reconnects without restarting the app, retrying once per second
 - **Connection error alerts** — a square, dialog-like overlay shows the failure (port, error detail) for 2 seconds on whatever screen is active, without taking the keyboard; the same error is not repeated while it persists
 - **Mock mode** — replay a previously recorded CSV file instead of connecting to hardware
@@ -97,6 +98,12 @@ Settings are loaded from `config.json` in the working directory or from the file
     "ve_sound": "alarm.wav",
     "closed_sound": "alarm.wav",
     "open_sound": "alarm.wav"
+  },
+  "ignition_tuning": {
+    "rpm_min": 2900,
+    "rpm_max": 3100,
+    "gear": 5,
+    "max_map_kpa": 70
   }
 }
 ```
@@ -115,6 +122,13 @@ Settings are loaded from `config.json` in the working directory or from the file
 | `dashboard.graph_x_size` | Number of samples kept in each graph buffer |
 | `ve_calibration.ve_sound` | `.wav` played after VE rows are written to the ECU |
 | `ve_calibration.closed_sound` / `open_sound` | `.wav` files played when the lambda loop is closed / opened |
+| `ignition_tuning.rpm_min` / `rpm_max` | RPM band (inclusive) analysed on the ignition tuning screen; default `2900` / `3100` |
+| `ignition_tuning.gear` | Gear in which samples are analysed; default `5` |
+| `ignition_tuning.max_map_kpa` | Highest MAP axis value (kPa) of the ignition rows the offset changes; rows above stay untouched; default `70` |
+| `ignition_tuning.max_ignition` | Highest raw ignition value (degrees) a cell can reach; default `50` |
+| `ignition_tuning.settle_seconds` | Seconds ignored after a write, a resume or the lambda loop closing again; default `5` |
+| `ignition_tuning.min_scenario_seconds` | Analysed seconds a scenario needs before it is compared; default `20` |
+| `ignition_tuning.write_sound` / `ready_sound` / `pause_sound` / `resume_sound` / `discard_sound` | `.wav` cues: ignition rows written, scenario has enough time, analysis paused / resumed, worst scenario discarded |
 
 Signal definitions (name, ECU index, unit, limits, graph color, alarm thresholds) are in `app/masterinjection/signal.py`.
 
@@ -122,7 +136,7 @@ Signal definitions (name, ECU index, unit, limits, graph color, alarm thresholds
 
 ## Screens
 
-The app uses a full-screen stacked layout. Navigation between screens is keyboard-only. **Esc** returns to the Home screen from the Dashboard and the VE calibration screen.
+The app uses a full-screen stacked layout. Navigation between screens is keyboard-only. **Esc** returns to the Home screen from the Dashboard, the VE calibration screen and the ignition tuning screen.
 
 ### Home Screen
 
@@ -130,7 +144,7 @@ The entry point of the application. Displays the app title, connection status, a
 
 - Title: `Master Injection` centered at the top
 - Connection status: port/baudrate (or mock file path) + a colored dot — green when connected, red when disconnected. Refreshed every 500 ms.
-- Menu items: `Dashboard` and `Calibração de VE`
+- Menu items: `Dashboard`, `Calibração de VE` and `Ajuste de Ignição`
 - Keyboard hint at the bottom
 
 ### Dashboard Screen
@@ -149,6 +163,15 @@ Live VE (Volumetric Efficiency) map viewer and editor. Allows real-time adjustme
 - **VE Graph (right)** — one curve per MAP row. Overlaid points mark all map nodes; the active interpolation region is highlighted. A lime dot marks the current VE reading from the ECU; a cyan dot marks the predicted `VE_LAMBDA` value (visible only in closed loop).
 - Edits are written to the ECU one second after the last key press. Resetting the map restores the ECU values and writes them back.
 
+### Ignition Tuning Screen
+
+Built to be used while driving, with almost no looking: the driver holds a steady RPM in a fixed gear on a flat road, raises the advance one degree at a time and the screen shows what the engine needed to keep the same speed.
+
+- **Offset** — ↑ / ↓ move one global advance offset by ±1°. It is applied to every column of the ignition rows (`#I01`..`#I16`) whose MAP axis value is at or below `ignition_tuning.max_map_kpa`; higher rows are never touched. The written map is always `original + offset` (clamped to 0..`max_ignition`), so cells clamped at 0 return to their original value when the offset comes back up. Writes go to ECU RAM only: a power cycle restores the stored map.
+- **Columns** — one per offset tried, in ascending order: RPM band, analysed time, mean ignition, mean injection time, mean MAP, mean pedal, mean lambda and the knock counter increase. For injection time, MAP and pedal the percentage difference to the best value of that sensor is shown; the column with the lowest mean injection time (among columns with enough analysed time, at least two) gets a green border.
+- **What is analysed** — only frames with RPM inside the band, the configured gear, the lambda loop closed (1 or 2), not paused and past the settle time. **Space** pauses and resumes (for a hill ahead). **X** discards the worst column (highest mean injection time among the comparable ones) to clean up the comparison; it never discards the column of the current offset and does not touch the ECU map.
+- **Cues** — configurable sounds confirm a write, a pause / resume, a discard and a column that gathered enough time.
+
 ---
 
 ## Keyboard shortcuts
@@ -156,14 +179,18 @@ Live VE (Volumetric Efficiency) map viewer and editor. Allows real-time adjustme
 | Key | Screen | Action |
 |-----|--------|--------|
 | **Esc** | Home | Exit the app |
-| **Esc** | Dashboard, VE Calibration | Return to Home screen |
-| **Enter** | Dashboard, VE Calibration | Beep + stamp `MARK` on the next CSV row |
+| **Esc** | Dashboard, VE Calibration, Ignition Tuning | Return to Home screen |
+| **Enter** | Dashboard, VE Calibration, Ignition Tuning | Beep + stamp `MARK` on the next CSV row |
 | **↑ / ↓** | Home | Navigate menu |
 | **Enter** | Home | Open selected screen |
 | **↑ / ↓** | VE Calibration | Adjust VE ±5 raw units (0.5 %) at the current operating point |
 | **O** | VE Calibration | Send `LAMBDA_LOOP_OPEN` to the ECU + play sound |
 | **P** | VE Calibration | Send `LAMBDA_LOOP_CLOSE` to the ECU + play sound |
 | **R** | VE Calibration | Reset all VE cells to the ECU values |
+| **↑ / ↓** | Ignition Tuning | Raise / lower the advance offset by 1° (held keys act once) |
+| **Space** | Ignition Tuning | Pause / resume the analysis |
+| **X** | Ignition Tuning | Discard the worst scenario (not the current one); changes no map value |
+| **R** | Ignition Tuning | Offset back to 0, original ignition map written back, analysis cleared |
 
 ---
 

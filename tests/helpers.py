@@ -30,3 +30,23 @@ def parsed(signal: Signal, value, raw=None) -> ParsedSignal:
 def key_press(key: Qt.Key, auto_repeat: bool = False) -> QKeyEvent:
     """A synthetic key press, optionally flagged as an OS auto-repeat."""
     return QKeyEvent(QEvent.Type.KeyPress, key, Qt.KeyboardModifier.NoModifier, "", auto_repeat, 1)
+
+
+_IGNITION_DEFAULTS = dict(rpm=3000, gear=5, loop=2, pulse=108, map=45, pedal=495, knock=40, lam=1000, ign=40)
+
+
+def ignition_set(**fields) -> dict:
+    """A parsed telemetry set for the ignition tuning tests, built through the real frame parser.
+
+    Fields are raw frame values: rpm, gear, loop, pulse, map, pedal, knock, lam, ign (defaults: 3000 RPM,
+    5th gear, closed loop with correction, a steady cruise)."""
+    from app.masterinjection.signal_processor import SignalProcessor
+
+    f = {**_IGNITION_DEFAULTS, **fields}
+    frame = frame_with({1: f["rpm"], 2: f["map"], 6: f["lam"], 7: f["pulse"], 10: f["ign"], 11: f["knock"],
+                        24: f["loop"], 29: f["pedal"], 33: f["gear"]})
+    processor = SignalProcessor()
+    received = []
+    processor.emitter.connect(received.append)
+    processor.process_line(frame)
+    return received[0]

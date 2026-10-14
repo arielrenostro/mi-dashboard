@@ -97,6 +97,7 @@ class EcuConnectionSerial(EcuConnection):
                 self._start_communication()
                 self._fetch_breakpoints()
                 self._fetch_ve_map()
+                self._fetch_ignition_map()
                 self._start_streaming()
                 self._connection_status = EcuConnectionStatus.CONNECTED
                 self.clear_reported_error()
@@ -162,6 +163,17 @@ class EcuConnectionSerial(EcuConnection):
         for i, ve_line in reversed(list(enumerate(ve_map))):
             logger.info(f"Fuel Map: {i} {ve_line}")
 
+    def _fetch_ignition_map(self):
+        logger.debug("Obtendo mapa de ignição...")
+        for i in range(1, 17):
+            cmd = EcuCommand[f"IGN_ROW_{i}"]
+            resp = self._send_and_retry(cmd, [EcuResponse[f"IGN_ROW_{i}"]])
+            if resp and len(resp) > 0:
+                ign_line = list(map(lambda x: int(x), resp.split(";")[1:]))
+                vehicle_state.set_ignition_row(ign_line, i - 1)
+        ign_map = vehicle_state.get_ignition_map()
+        for i, ign_line in reversed(list(enumerate(ign_map))):
+            logger.info(f"Ignition Map: {i} {ign_line}")
 
     def _start_streaming(self):
         logger.debug("Iniciando streaming...")

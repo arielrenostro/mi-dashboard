@@ -98,6 +98,18 @@ def test_enter_on_the_ve_screen_marks_too(chain):
     assert events(path, 1) == ["MARK"]
 
 
+def test_enter_on_the_ignition_tuning_screen_marks_too(chain):
+    """Scenario: Mark on the Ignition tuning screen."""
+    window, writer, path, marker = chain
+    window.show_screen("ignition_tuning")
+
+    window.keyPressEvent(key_press(Qt.Key.Key_Return))
+    writer.write(SAMPLE_FRAME)
+
+    assert events(path, 1) == ["MARK"]
+    marker._player.play.assert_called_once()
+
+
 def test_holding_enter_marks_once(chain):
     """Scenario: Held key."""
     window, writer, path, marker = chain
