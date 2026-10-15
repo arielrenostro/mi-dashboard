@@ -163,6 +163,22 @@ class Signal(enum.Enum):
         },
     }
 
+    BAT_VOLT = {
+        "name": "Bat Volt",
+        "index": 18,
+        "converter": lambda x: float(x) / 10.0,
+        "for_label": lambda x: f'{x:.1f}',
+        "unit": "V",
+        "min": 8,
+        "max": 16,
+        "color": "gold",
+        "alarm": {
+            "enabled": False,
+            "min": 11,
+            "max": 15,
+        },
+    }
+
     CLT = {
         "name": "CLT",
         "index": 19,

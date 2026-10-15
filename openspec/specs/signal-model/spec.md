@@ -34,6 +34,7 @@ The system SHALL define these direct signals. Alarm columns give whether the ala
 | VE | VE | 9 | % | raw/10 | `{v:.1f}` | 0..1200 | lime | no | - | - |
 | IGN | Ign | 10 | º | integer | `{v}` | -45..45 | lime | no | 0 | 40 |
 | OIL_PRESSURE | Oil Pressure | 16 | Bar | raw/100 | `{v:.2f}` | 0..10 | lime | no | 0 | 40 |
+| BAT_VOLT | Bat Volt | 18 | V | raw/10 | `{v:.1f}` | 8..16 | gold | no | 11 | 15 |
 | CLT | CLT | 19 | ºC | integer - 273 | `{v}` | -20..120 | orange | yes | 0 | 95 |
 | IAT | IAT | 20 | ºC | integer - 273 | `{v}` | -20..120 | DodgerBlue | no | 0 | 80 |
 | VSS | Speed | 23 | km/h | integer | `{v}` | 0..200 | blue | yes | 0 | 150 |
@@ -51,6 +52,10 @@ The system SHALL define these direct signals. Alarm columns give whether the ala
 #### Scenario: Oil pressure conversion
 - **WHEN** field 16 is `350`
 - **THEN** OIL_PRESSURE is `3.5` and displayed as `3.50`
+
+#### Scenario: Battery voltage conversion
+- **WHEN** field 18 is `141`
+- **THEN** BAT_VOLT is `14.1` and displayed as `14.1`
 
 #### Scenario: Lambda conversion
 - **WHEN** field 6 is `903`

@@ -16,6 +16,7 @@ CATALOG = [
     (Signal.IGN, 10, "º", -45, 45, "lime", False, 0, 40),
     (Signal.KNOCK, 11, "", 0, 1000, "red", False, None, None),
     (Signal.OIL_PRESSURE, 16, "Bar", 0, 10, "lime", False, 0, 40),
+    (Signal.BAT_VOLT, 18, "V", 8, 16, "gold", False, 11, 15),
     (Signal.CLT, 19, "ºC", -20, 120, "orange", True, 0, 95),
     (Signal.IAT, 20, "ºC", -20, 120, "DodgerBlue", False, 0, 80),
     (Signal.VSS, 23, "km/h", 0, 200, "blue", True, 0, 150),
@@ -62,6 +63,7 @@ def test_catalog_has_no_unlisted_direct_signals():
         (Signal.INJ_PULSE, "107", 1.07, "1.07"),  # scenario: Injection pulse conversion
         (Signal.KNOCK, "42", 42, "42"),  # scenario: Knock counter
         (Signal.OIL_PRESSURE, "350", 3.5, "3.50"),  # scenario: Oil pressure conversion
+        (Signal.BAT_VOLT, "141", 14.1, "14.1"),  # scenario: Battery voltage conversion
     ],
 )
 def test_conversion_and_display(signal, raw, value, display):
