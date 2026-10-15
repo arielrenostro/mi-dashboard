@@ -30,7 +30,23 @@ A real-time telemetry dashboard for the Master Injection ECU. Streams sensor dat
 
 ### VE map calibration
 
-Live 16×16 VE map with heatmap coloring and the bilinear-interpolation highlight of the current operating point (orange). Cells edited with **↑ / ↓** show in cyan text and are written to the ECU one second after the last key press; the graph plots one curve per MAP row, with the live VE (lime) and the lambda-corrected VE λ (cyan, closed loop only).
+Correct the ECU's 16×16 VE (volumetric efficiency) map **while driving**. The cursor on the map is the car itself: drive into the condition you want to fix (the RPM and MAP of the region), notice a large error between what the map says and what the engine needs, and adjust that region by hand on the spot. It is meant for regions that are very far off.
+
+1. Open **Calibração de VE** (or press **F2**) with the engine running. The map has a **cursor** that you do not move with the keyboard: it is the ECU's current operating point, placed from the live RPM and MAP, and the cells around it are tinted orange. To put the cursor on a region, drive the car into that RPM and MAP.
+2. With the cursor on the region, look for a large error: the cyan dot (VE λ) far from the lime dot (VE), or a lambda far from its target, in the top bar.
+3. Press **↑ / ↓** to raise or lower VE by 5 raw units (0.5 %) where the cursor is. Hold the key to repeat. Edited cells show in cyan text.
+4. Stop pressing. One second after the last edit the app writes the changed rows to the ECU and plays a confirmation sound.
+5. Press **P** / **O** to close / open the lambda loop (the cyan VE λ dot is only shown with the loop closed).
+6. Press **R** to throw the edits away and write the ECU's original values back.
+
+**How to read it:**
+
+- **Table** — rows are MAP, columns are RPM; the heatmap goes from green (low VE) to dark red (high VE).
+- **Cursor** — the orange cells on the table and the dots on the graph: they follow the ECU's live RPM and MAP, so the cursor is the car and moves as you drive. Edits always apply where it is.
+- **Graph** — one curve per MAP row, with two dots at the cursor:
+  - **lime dot — VE:** the VE the ECU is using right now.
+  - **cyan dot — VE λ:** a value the app calculates from the measured lambda, the fuel trim and the lambda target (`(LAMBDA + FUEL_TRIM − LAMBDA_TARGET) × VE / 10000`). It equals the lime dot when lambda is on target with no trim, and moves away from it as the closed loop corrects; shown only with the loop closed.
+- **Top bar** — RPM, MAP, VE, lambda, lambda target, fuel trim and the lambda loop state.
 
 ![VE calibration screen](assets/ve_calibration.png)
 
@@ -276,12 +292,25 @@ Full-screen live telemetry display. Shows the configured signals as numeric card
 
 ### VE Calibration Screen
 
-Live VE (Volumetric Efficiency) map viewer and editor. Allows real-time adjustment of the ECU's 16×16 fuel map while the engine is running, with visual feedback of the current operating point.
+Live viewer and editor of the ECU's 16×16 fuel map while the engine is running, with visual feedback of the current operating point. The screen refreshes every 100 ms.
 
-- **Top bar** — live values for RPM, MAP, VE, Lambda, Lambda Target, Fuel Trim, and Lambda Loop state.
-- **VE Map table (left)** — 16×16 grid. Rows are MAP (kPa) values (high at top, low at bottom); columns are RPM values. Cells are colored with a heatmap; the cells around the current operating point are highlighted in orange, weighted by bilinear interpolation. Modified cells are shown in cyan text.
-- **VE Graph (right)** — one curve per MAP row. Overlaid points mark all map nodes; the active interpolation region is highlighted. A lime dot marks the current VE reading from the ECU; a cyan dot marks the predicted `VE_LAMBDA` value (visible only in closed loop).
-- Edits are written to the ECU one second after the last key press. Resetting the map restores the ECU values and writes them back.
+- **Top bar** — seven cards: RPM, MAP, VE, Lambda, Lambda Target, Fuel Trim and Lambda Loop. The loop card is green when the loop is closed (`Closed`, `Closed+C`) and orange when it is open.
+- **VE map table (left)** — 16×16 grid of raw values.
+  - Columns are RPM (ascending to the right); rows are MAP in kPa (highest at the top).
+  - The heatmap goes from green (lowest) through yellow to dark red (highest).
+  - The cells around the current operating point are tinted orange, weighted by bilinear interpolation. This is the table's **cursor**: it is not moved with the keyboard, it follows the ECU's live RPM and MAP.
+  - Modified cells (different from the value the ECU confirmed) show in cyan text.
+- **VE graph (right)** — RPM against VE %.
+  - One thin curve per MAP row, from green (lowest MAP) to red (highest).
+  - A small square marks every map node; the interpolated ones are larger and orange.
+  - The dots sit at the live RPM: a **lime dot** for the live VE reported by the ECU and a **cyan dot** for `VE λ`, calculated by the app from lambda, fuel trim and lambda target (visible only with the loop closed).
+- **Editing** — **↑ / ↓** change VE by ±5 raw units (0.5 %) at the current operating point and do nothing until RPM and MAP have been received. Holding the key repeats the edit.
+- **Writing to the ECU**
+  - One second after the last edit, every changed row is written in full (16 values), in ascending row order. Rows that were not edited are not sent, and an edit undone within the delay sends nothing.
+  - The write-on-memory command is **not** sent: the changes live in ECU RAM until a power cycle.
+  - A sound (`ve_calibration.ve_sound`) confirms each write.
+  - **R** resets the map to the values the ECU confirmed and writes all 16 rows back.
+- **Lambda loop** — **O** opens it (`#D06`, plays `open_sound`) and **P** closes it (`#D05`, plays `closed_sound`). The keys only work on this screen, and the card changes only when the ECU reports the new state.
 
 ### Ignition Tuning Screen
 
@@ -340,7 +369,7 @@ Built to be used while driving, with almost no looking: the driver holds a stead
 | **← / →** | Settings | Change the selected value (port, limits, RPM band, times) |
 | **Enter** | Settings | Connect / disconnect, zero the inclination or recalibrate the gyroscope |
 | **Enter** | ECU | Toggle the phase (Negativa ↔ Positiva), written to the ECU 1 s after the last change, not saved to memory |
-| **↑ / ↓** | VE Calibration | Adjust VE ±5 raw units (0.5 %) at the current operating point |
+| **↑ / ↓** | VE Calibration | Adjust VE ±5 raw units (0.5 %) at the current operating point (held keys repeat) |
 | **O** | VE Calibration | Send `LAMBDA_LOOP_OPEN` to the ECU + play sound |
 | **P** | VE Calibration | Send `LAMBDA_LOOP_CLOSE` to the ECU + play sound |
 | **R** | VE Calibration | Reset all VE cells to the ECU values |
