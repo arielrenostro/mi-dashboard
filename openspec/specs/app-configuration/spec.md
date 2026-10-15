@@ -48,7 +48,7 @@ The system SHALL support the following settings and defaults.
 | `ve_calibration.open_sound` | Audio played when the open-loop key is pressed | `alarm.wav` |
 | `ignition_tuning.rpm_min` | Lower RPM bound (inclusive) of the analysed band | `2900` |
 | `ignition_tuning.rpm_max` | Upper RPM bound (inclusive) of the analysed band | `3100` |
-| `ignition_tuning.gear` | Gear in which samples are analysed | `5` |
+| `ignition_tuning.gears` | List of gears in which samples are analysed | `[5]` |
 | `ignition_tuning.max_map_kpa` | Highest MAP axis value (inclusive) of the rows changed by the advance offset | `70` |
 | `ignition_tuning.max_ignition` | Highest raw ignition value (degrees) a cell can reach | `50` |
 | `ignition_tuning.settle_seconds` | Seconds to discard samples after a write or a resume | `5` |
@@ -77,11 +77,19 @@ The system SHALL support the following settings and defaults.
 
 #### Scenario: Ignition tuning defaults
 - **WHEN** the configuration has no `ignition_tuning` section
-- **THEN** the band is 2900 to 3100 RPM, the gear is 5, the MAP limit is 70, the ceiling is 50, settling is 5 seconds and the minimum scenario time is 20 seconds
+- **THEN** the band is 2900 to 3100 RPM, the analysed gears are `[5]`, the MAP limit is 70, the ceiling is 50, settling is 5 seconds and the minimum scenario time is 20 seconds
 
 #### Scenario: Ignition tuning band configured
 - **WHEN** `ignition_tuning.rpm_min` is `3400` and `ignition_tuning.rpm_max` is `3600`
 - **THEN** only samples with RPM from 3400 to 3600 are analysed
+
+#### Scenario: Ignition tuning gears configured
+- **WHEN** `ignition_tuning.gears` is `[4, 5]`
+- **THEN** samples in 4th and in 5th gear are analysed
+
+#### Scenario: Previous gear key not read
+- **WHEN** the configuration has `ignition_tuning.gear` set to `4` and no `ignition_tuning.gears`
+- **THEN** the analysed gears are `[5]`
 
 ### Requirement: Fixed signal definitions
 Signal indices, display names, units, graph ranges, colors and alarm limits SHALL NOT be configurable through the configuration file; they are fixed by the signal catalog.
