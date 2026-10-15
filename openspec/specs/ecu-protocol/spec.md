@@ -34,6 +34,7 @@ The system SHALL define the following commands. A command MAY carry arguments, i
 | RPM breakpoints | `#I20` | Request the 16 RPM axis values |
 | MAP breakpoints | `#I21` | Request the 16 MAP axis values |
 | VE row N (N = 1..16) | `#F01` .. `#F16` | Request VE row N; with 16 arguments, write VE row N |
+| Ignition row N (N = 1..16) | `#I01` .. `#I16` | Request ignition row N; with 16 arguments, write ignition row N |
 
 #### Scenario: Command without arguments
 - **WHEN** the lambda loop open command is sent
@@ -43,12 +44,20 @@ The system SHALL define the following commands. A command MAY carry arguments, i
 - **WHEN** VE row 5 is written with 16 raw values
 - **THEN** the line `#F05;v1;v2;...;v16` is written
 
+#### Scenario: Ignition row write
+- **WHEN** ignition row 3 is written with 16 raw values
+- **THEN** the line `#I03;v1;v2;...;v16` is written
+
 ### Requirement: Response catalog
-The system SHALL recognize responses by their prefix: `#D50` (ECU info), `#D01`, `#D02` and `#D03` (telemetry), `#I20` (RPM breakpoints), `#I21` (MAP breakpoints) and `#F01` to `#F16` (VE rows). Breakpoint responses carry 16 integers after the prefix; VE row responses carry 16 raw integer VE values after the prefix.
+The system SHALL recognize responses by their prefix: `#D50` (ECU info), `#D01`, `#D02` and `#D03` (telemetry), `#I20` (RPM breakpoints), `#I21` (MAP breakpoints), `#F01` to `#F16` (VE rows) and `#I01` to `#I16` (ignition rows). Breakpoint responses carry 16 integers after the prefix; VE row and ignition row responses carry 16 raw integer values after the prefix.
 
 #### Scenario: Breakpoint response
 - **WHEN** the line `#I21;20;30;...` is received
 - **THEN** the integers after the prefix are the MAP axis values, ascending
+
+#### Scenario: Ignition row response
+- **WHEN** the line `#I05;v1;...;v16` is received
+- **THEN** the 16 integers after the prefix are the values of ignition row 5
 
 ### Requirement: VE row addressing
 VE row N of the protocol (`#F0N`) SHALL correspond to row index N-1 of the VE map, where row index 0 is the lowest MAP breakpoint and index 15 the highest.
@@ -56,3 +65,10 @@ VE row N of the protocol (`#F0N`) SHALL correspond to row index N-1 of the VE ma
 #### Scenario: First row
 - **WHEN** `#F01` is received
 - **THEN** its values are stored as the lowest-MAP row
+
+### Requirement: Ignition row addressing
+Ignition row N of the protocol (`#I0N`) SHALL correspond to row index N-1 of the ignition map, where row index 0 is the lowest MAP breakpoint and index 15 the highest, using the same RPM and MAP axes as the VE map. Raw ignition values SHALL be whole degrees of advance.
+
+#### Scenario: First row
+- **WHEN** `#I01` is received
+- **THEN** its values are stored as the lowest-MAP ignition row

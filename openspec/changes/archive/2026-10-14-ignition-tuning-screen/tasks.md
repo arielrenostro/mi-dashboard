@@ -45,6 +45,6 @@
 ## 9. Verification
 
 - [x] 9.1 Run the full suite (`.venv\Scripts\python -m pytest` on Windows, `.venv-wsl/bin/python -m pytest` in WSL) and verify it passes; clear `__pycache__` if a result looks impossible
-- [ ] 9.2 Manual check with the mock source (`connection.mock` set): open `Ajuste de Ignição`, press Up/Down/Space/R and confirm the screen, status labels and sounds behave as in the specs (audio output cannot be unit tested)
+- [x] 9.2 Manual check with the mock source (`connection.mock` set): open `Ajuste de Ignição`, press Up/Down/Space/R and confirm the screen, status labels and sounds behave as in the specs (audio output cannot be unit tested)
 - [x] 9.3 Manual check on the car, offline first: with the engine running and the car stopped, read `#I01..#I16` and confirm the raw unit is whole degrees and the rows follow the `#F` row order; press Up and confirm the `IGN` telemetry changes by 1 at a fixed operating point, then R and confirm it returns; confirm `INJ_PULSE` is in units of 10 µs against the datalog and that `KNOCK` is a counter that only increases
 - [x] 9.4 Update `CLAUDE.md` (code layout, `ignition_tuning` section name) and the README key list so they match the new screen

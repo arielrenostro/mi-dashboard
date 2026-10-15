@@ -7,7 +7,7 @@ Defines the full-screen application window, how screens are activated and receiv
 ## Requirements
 
 ### Requirement: Full-screen multi-screen window
-The app SHALL show a single full-screen window containing exactly one visible screen at a time. The available screens are `home`, `dashboard` and `ve_calibration`, and the app SHALL start on `home`.
+The app SHALL show a single full-screen window containing exactly one visible screen at a time. The available screens are `home`, `dashboard`, `ve_calibration` and `ignition_tuning`, and the app SHALL start on `home`.
 
 #### Scenario: Startup
 - **WHEN** the app starts
@@ -32,18 +32,26 @@ Key press and key release events received by the window SHALL be delivered only 
 - **THEN** only the VE calibration screen handles it
 
 ### Requirement: Return to Home with ESC
-On the Dashboard and the VE calibration screen, ESC SHALL show the Home screen.
+On the Dashboard, the VE calibration screen and the Ignition tuning screen, ESC SHALL show the Home screen.
 
 #### Scenario: Back from calibration
 - **WHEN** the user presses ESC on the VE calibration screen
 - **THEN** the Home screen is shown
 
+#### Scenario: Back from ignition tuning
+- **WHEN** the user presses ESC on the Ignition tuning screen
+- **THEN** the Home screen is shown
+
 ### Requirement: Home screen content
-The Home screen SHALL have a black background, the centered title `Master Injection` in large bold white text, a connection line, a vertical menu and the hint `↑↓ Navegar | Enter Selecionar` in gray at the bottom. The menu SHALL contain `Dashboard` (opens `dashboard`) and `Calibração de VE` (opens `ve_calibration`), in that order.
+The Home screen SHALL have a black background, the centered title `Master Injection` in large bold white text, a connection line, a vertical menu and the hint `↑↓ Navegar | Enter Selecionar` in gray at the bottom. The menu SHALL contain `Dashboard` (opens `dashboard`), `Calibração de VE` (opens `ve_calibration`) and `Ajuste de Ignição` (opens `ignition_tuning`), in that order.
 
 #### Scenario: Initial selection
 - **WHEN** Home is first shown
 - **THEN** `Dashboard` is selected
+
+#### Scenario: Ignition tuning entry
+- **WHEN** `Ajuste de Ignição` is selected and the user presses Enter
+- **THEN** the Ignition tuning screen is shown
 
 ### Requirement: Menu navigation
 On Home, ↑ SHALL move the selection to the previous item and ↓ to the next, wrapping around at both ends; Enter SHALL open the selected screen. Auto-repeat key events SHALL be ignored. The selected item SHALL be drawn with white text, a blue border and a translucent blue background; other items SHALL be gray with no visible border.
