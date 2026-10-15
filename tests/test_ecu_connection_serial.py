@@ -192,6 +192,40 @@ def test_ignition_row_write_is_sent_with_its_sixteen_values(make_connection):
     assert port.written == ["#I03;" + ";".join(map(str, range(20, 36)))]
 
 
+def test_parameter_block_request_is_written_without_arguments(make_connection):
+    """Scenario: Parameter block request."""
+    port = FakeSerial(lines=["#D01;1", "#D02;2"])
+    conn = make_connection(port)
+    conn.send_command(EcuCommand.PARAMETERS_X02)
+
+    conn.run()
+    conn.run()
+
+    assert port.written == ["#X02"]
+
+
+def test_parameter_block_write_is_sent_with_its_sixteen_values(make_connection):
+    """Scenario: Parameter block write."""
+    port = FakeSerial(lines=["#D01;1", "#D02;2"])
+    conn = make_connection(port)
+    conn.send_command(EcuCommand.PARAMETERS_X02, list(range(16)))
+
+    conn.run()
+    conn.run()
+
+    assert port.written == ["#X02;" + ";".join(map(str, range(16)))]
+
+
+def test_parameter_block_response_reaches_the_emitter(make_connection):
+    """Scenario: Parameter block response (a non-telemetry line is emitted unchanged)."""
+    line = "#X02;" + ";".join(map(str, range(16)))
+    conn = make_connection(FakeSerial(lines=[line]))
+
+    conn.run()
+
+    assert conn.emitter.lines == [line]
+
+
 def test_commands_are_written_in_order(make_connection):
     """Scenario: Order."""
     port = FakeSerial(lines=["#D01;1", "#D02;2"])

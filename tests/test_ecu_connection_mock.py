@@ -192,3 +192,57 @@ def test_the_mock_source_never_reports_errors(tmp_path, sleeps):
     mock.send_command(EcuCommand.LAMBDA_LOOP_OPEN)
 
     assert mock.error_emitter.lines == []
+
+
+# ------------------------------------------------------------ parameter block X02
+
+X02_INITIAL = "#X02;600;400;6;0;117;8000;6100;6300;5;2000;1750;0;1960;2;100;2"
+
+
+def test_x02_request_is_answered_with_the_initial_block(tmp_path):
+    """Scenario: Request (Mock parameter block)."""
+    mock = make_mock(write_log(tmp_path / "log.csv", 0))
+
+    mock.send_command(EcuCommand.PARAMETERS_X02)
+
+    assert mock.emitter.lines == [X02_INITIAL]
+
+
+def test_x02_write_then_request_returns_the_written_values(tmp_path):
+    """Scenario: Write then request."""
+    mock = make_mock(write_log(tmp_path / "log.csv", 0))
+    written = list(range(10, 26))
+
+    mock.send_command(EcuCommand.PARAMETERS_X02, written)
+    mock.send_command(EcuCommand.PARAMETERS_X02)
+
+    assert mock.emitter.lines == ["#X02;" + ";".join(map(str, written))]
+
+
+def test_x02_write_is_silent(tmp_path):
+    """Scenario: Write is silent."""
+    mock = make_mock(write_log(tmp_path / "log.csv", 0))
+
+    mock.send_command(EcuCommand.PARAMETERS_X02, [1] * 16)
+
+    assert mock.emitter.lines == []
+
+
+def test_x02_write_with_the_wrong_argument_count_is_ignored(tmp_path):
+    """Scenario: Wrong argument count."""
+    mock = make_mock(write_log(tmp_path / "log.csv", 0))
+
+    mock.send_command(EcuCommand.PARAMETERS_X02, [1] * 5)
+    mock.send_command(EcuCommand.PARAMETERS_X02)
+
+    assert mock.emitter.lines == [X02_INITIAL]
+
+
+def test_x02_commands_do_not_affect_the_replay(tmp_path, sleeps):
+    """Requirement: Mock parameter block (does not affect the replay)."""
+    mock = make_mock(write_log(tmp_path / "log.csv", 3))
+
+    mock.send_command(EcuCommand.PARAMETERS_X02, [1] * 16)
+    mock.run()
+
+    assert emitted_numbers(mock) == [1, 2, 3]

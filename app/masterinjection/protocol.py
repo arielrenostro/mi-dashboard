@@ -1,4 +1,50 @@
 import enum
+from typing import List, Optional
+
+X02_LENGTH = 16
+# Position of the engine phase in the #X02 parameter block (0-based, after the prefix).
+X02_PHASE_INDEX = 11
+
+
+class Phase(enum.IntEnum):
+    NEGATIVE = 0
+    POSITIVE = 1
+
+    @property
+    def label(self) -> str:
+        return "Negativa" if self is Phase.NEGATIVE else "Positiva"
+
+    @property
+    def opposite(self) -> "Phase":
+        return Phase.POSITIVE if self is Phase.NEGATIVE else Phase.NEGATIVE
+
+
+def parse_x02(line: str) -> Optional[List[int]]:
+    """The 16 integers of an `#X02;...` line, or None when the line is not a valid #X02 block."""
+    parts = line.strip().split(";")
+    if parts[0] != EcuResponse.PARAMETERS_X02.value or len(parts) != X02_LENGTH + 1:
+        return None
+    try:
+        return [int(part) for part in parts[1:]]
+    except ValueError:
+        return None
+
+
+def x02_phase(block: Optional[List[int]]) -> Optional[Phase]:
+    """The phase held by a block, or None when there is no block or its phase value is not 0 or 1."""
+    if block is None or len(block) != X02_LENGTH:
+        return None
+    try:
+        return Phase(block[X02_PHASE_INDEX])
+    except ValueError:
+        return None
+
+
+def x02_with_phase(block: List[int], phase: Phase) -> List[int]:
+    """A copy of the block with only the phase value replaced."""
+    result = list(block)
+    result[X02_PHASE_INDEX] = int(phase)
+    return result
 
 
 class EcuCommand(enum.Enum):
@@ -11,6 +57,8 @@ class EcuCommand(enum.Enum):
 
     RPM_BREAKPOINTS = ("#I20", "RPM Breakpoints")
     MAP_BREAKPOINTS = ("#I21", "MAP Breakpoints")
+
+    PARAMETERS_X02 = ("#X02", "Parameter block X02")
 
     VE_ROW_1 = ("#F01", "VE 1 line")
     VE_ROW_2 = ("#F02", "VE 2 line")
@@ -63,6 +111,8 @@ class EcuResponse(enum.Enum):
 
     RPM_BREAKPOINTS = "#I20"
     MAP_BREAKPOINTS = "#I21"
+
+    PARAMETERS_X02 = "#X02"
 
     VE_ROW_1 = "#F01"
     VE_ROW_2 = "#F02"

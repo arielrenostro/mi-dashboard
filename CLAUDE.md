@@ -48,7 +48,7 @@ python3 -m venv .venv-wsl
 
 ## Specifications (OpenSpec)
 
-`openspec/specs/` is the source of truth for what the system does. There is one folder per capability (`ecu-connection`, `ecu-protocol`, `signal-model`, `vehicle-state`, `alarms`, `dashboard`, `screen-navigation`, `ve-map-model`, `ve-calibration-screen`, `ve-write`, `datalog`, `lambda-loop-control`, `ignition-map-model`, `ignition-analysis`, `ignition-tuning-screen`, `app-configuration`, `app-lifecycle`). Read the relevant spec before changing behavior.
+`openspec/specs/` is the source of truth for what the system does. There is one folder per capability (`ecu-connection`, `ecu-protocol`, `signal-model`, `vehicle-state`, `alarms`, `dashboard`, `screen-navigation`, `ve-map-model`, `ve-calibration-screen`, `ve-write`, `datalog`, `lambda-loop-control`, `ignition-map-model`, `ignition-analysis`, `ignition-tuning-screen`, `options-screen`, `phase-write`, `app-configuration`, `app-lifecycle`). Read the relevant spec before changing behavior.
 
 - Behavior changes go through an OpenSpec change (`/opsx:propose <name>`, then `/opsx:apply`, then `/opsx:archive`), so the specs stay in sync with the code. Each change's `tasks.md` must include its unit-test tasks (see Testing).
 - Known defects and the rationale behind the baseline are recorded in `openspec/changes/archive/*-baseline-existing-system/design.md` ("Known issues").
@@ -71,6 +71,7 @@ app/alarm/                 AlarmProcessor (limit checks + alarm sound)
 app/log_writer/            CSV LogWriter (own thread)
 app/ui/                    AppWindow, Home, Dashboard, VE calibration, ignition tuning (per-gear analysis,
                            IgnitionResultsLog CSV snapshot in datalog.path), SignalCard
+app/ui/options/            OptionsScreen (engine phase) and PhaseWriteController (read-modify-write of #X02, never #D04)
 app/ui/common/             RowWriteController (debounced row-by-row map write, shared by VE and ignition)
 app/config.py              config.json loader
 ```

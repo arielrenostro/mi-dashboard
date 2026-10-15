@@ -1,6 +1,6 @@
 import logging
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QWidget, QStackedWidget
 
 from app.config import config
@@ -9,6 +9,7 @@ from app.ui.components.error_overlay import ErrorOverlay
 from app.ui.dashboard.screen import DashboardScreen
 from app.ui.home.screen import HomeScreen
 from app.ui.ignition_tuning.screen import IgnitionTuningScreen
+from app.ui.options.screen import OptionsScreen
 from app.ui.ve_calibration.screen import VeCalibrationScreen
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,14 @@ class AppWindow(QWidget):
     key_event = pyqtSignal(int)
 
     _DATA_SCREENS = ("dashboard", "ve_calibration", "ignition_tuning")
+
+    # Global shortcuts: handled here, on every screen, and never delivered to the screens.
+    _SHORTCUTS = {
+        Qt.Key.Key_F1: "dashboard",
+        Qt.Key.Key_F2: "ve_calibration",
+        Qt.Key.Key_F3: "ignition_tuning",
+        Qt.Key.Key_F4: "options",
+    }
 
     def __init__(self, signal_processor: SignalProcessor):
         super().__init__()
@@ -48,6 +57,8 @@ class AppWindow(QWidget):
         ignition_tuning_screen = IgnitionTuningScreen(close_fn=lambda: self.show_screen("home"))
         self._signal_processor.emitter.connect(ignition_tuning_screen.on_signal_received)
 
+        options_screen = OptionsScreen(close_fn=lambda: self.show_screen("home"))
+
         dashboard_screen = DashboardScreen(
             close_fn=lambda: self.show_screen("home"),
             grid=config.dashboard.grid,
@@ -72,6 +83,10 @@ class AppWindow(QWidget):
             "ignition_tuning",
             ignition_tuning_screen,
         )
+        self._register_screen(
+            "options",
+            options_screen,
+        )
 
     def on_connection_error(self, message: str):
         """Show a connection error over the current screen for a couple of seconds."""
@@ -89,6 +104,10 @@ class AppWindow(QWidget):
         super().resizeEvent(event)
         if self._error_overlay.isVisible():
             self._error_overlay.reposition()
+
+    def on_ecu_line(self, line: str):
+        """Forward a raw line from the ECU to the Options screen (it handles the #X02 answers)."""
+        self._screens["options"].on_ecu_line(line)
 
     def on_alarm_onset(self, signal):
         """Forward the alarm onset notification to the Dashboard so the signal's card flashes."""
@@ -123,6 +142,12 @@ class AppWindow(QWidget):
 
     def keyPressEvent(self, event):
         """Handle key press events."""
+        shortcut_screen = self._SHORTCUTS.get(event.key())
+        if shortcut_screen is not None:
+            if not event.isAutoRepeat() and shortcut_screen != self._current_screen_name:
+                self.show_screen(shortcut_screen)
+            return
+
         # Judge the screen before the key is handled: Enter on Home opens a screen and must not be announced.
         announce = self._current_screen_name in self._DATA_SCREENS and not event.isAutoRepeat()
         self._screens[self._current_screen_name].keyPressEvent(event)
@@ -132,5 +157,7 @@ class AppWindow(QWidget):
 
     def keyReleaseEvent(self, event):
         """Handle key release events."""
+        if event.key() in self._SHORTCUTS:
+            return
         self._screens[self._current_screen_name].keyReleaseEvent(event)
         super().keyReleaseEvent(event)

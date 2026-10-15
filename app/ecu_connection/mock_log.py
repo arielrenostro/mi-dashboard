@@ -10,6 +10,10 @@ from app.state.state import vehicle_state
 logger = logging.getLogger(__name__)
 
 
+# #X02 line of the negative-phase map (phase value 0 at position 11).
+_MOCK_X02 = [600, 400, 6, 0, 117, 8000, 6100, 6300, 5, 2000, 1750, 0, 1960, 2, 100, 2]
+
+
 def _mock_ignition_row(row: int) -> list:
     """Fixed ignition row for development: less advance as MAP (row) rises, a bit more as RPM (column) rises."""
     return [max(5, 34 - 2 * row + col // 2) for col in range(16)]
@@ -22,6 +26,7 @@ class EcuConnectionMock(EcuConnection):
         self.mock_file = mock_file
         # Data lines to skip on the first pass only; later passes replay the whole file.
         self._pending_skip_lines = skip_lines
+        self._x02 = list(_MOCK_X02)
 
     def send_command(self, cmd: EcuCommand, args: List[Any] | None = None) -> None:
         logger.info(f"Sending command: {cmd} {args}")
@@ -31,6 +36,11 @@ class EcuConnectionMock(EcuConnection):
             self.emitter.emit('#I21;20;30;40;50;60;70;80;90;100;120;140;160;180;200;220;240')
         elif cmd == EcuCommand.RPM_BREAKPOINTS:
             self.emitter.emit('#I20;400;800;1200;1600;2000;2400;2800;3200;3600;4000;4400;4800;5200;5600;6200;6800')
+        elif cmd == EcuCommand.PARAMETERS_X02:
+            if not args:
+                self.emitter.emit(f'{cmd.cmd};{";".join(str(v) for v in self._x02)}')
+            elif len(args) == 16:
+                self._x02 = [int(v) for v in args]
 
     def run(self):
         last_timestamp = None

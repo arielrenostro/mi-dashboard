@@ -60,6 +60,7 @@ def main():
 
     get_ecu_connection_thread().error.connect(app_window.on_connection_error)
     get_ecu_connection().emitter.connect(signal_processor.process_line)
+    get_ecu_connection().emitter.connect(app_window.on_ecu_line)
     get_ecu_connection().emitter.connect(log_writer.write)
     get_ecu_connection_thread().start()
 

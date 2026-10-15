@@ -19,15 +19,25 @@ def processor():
 
 
 @pytest.fixture
-def window(qapp, processor):
+def ecu_commands(monkeypatch):
+    """Commands the Options screen queues; no real ECU connection exists in the tests."""
+    import app.ui.options.screen as options_module
+    sent = []
+    monkeypatch.setattr(options_module, "get_ecu_connection",
+                        lambda: Mock(send_command=lambda cmd, args=None: sent.append((cmd, args))))
+    return sent
+
+
+@pytest.fixture
+def window(qapp, processor, ecu_commands):
     w = AppWindow(processor)
     yield w
     w.close()
 
 
-def test_window_registers_the_four_screens_and_starts_on_home(window):
+def test_window_registers_the_five_screens_and_starts_on_home(window):
     """Requirement: Full-screen multi-screen window."""
-    assert set(window._screens) == {"home", "dashboard", "ve_calibration", "ignition_tuning"}
+    assert set(window._screens) == {"home", "dashboard", "ve_calibration", "ignition_tuning", "options"}
     assert window._current_screen_name == "home"
     assert window.stacked_widget.currentWidget() is window._screens["home"]
 
@@ -92,7 +102,7 @@ def test_key_events_go_only_to_the_visible_screen(window):
         window._screens[name].keyReleaseEvent.assert_not_called()
 
 
-@pytest.mark.parametrize("screen", ["dashboard", "ve_calibration"])
+@pytest.mark.parametrize("screen", ["dashboard", "ve_calibration", "ignition_tuning", "options"])
 def test_escape_returns_to_home_from_data_screens(window, screen):
     """Requirement: Return to Home with ESC (Scenario: Back from calibration)."""
     window.show_screen(screen)
@@ -373,3 +383,106 @@ def test_closing_the_window_without_ignition_results_is_harmless(window, tmp_pat
     window.close()
 
     assert os.listdir(tmp_path) == []
+
+
+# ----------------------------------------------------------- global shortcuts
+
+SHORTCUTS = [
+    (Qt.Key.Key_F1, "dashboard"),
+    (Qt.Key.Key_F2, "ve_calibration"),
+    (Qt.Key.Key_F3, "ignition_tuning"),
+    (Qt.Key.Key_F4, "options"),
+]
+
+
+@pytest.mark.parametrize("origin", ["home", "dashboard", "ve_calibration", "ignition_tuning", "options"])
+@pytest.mark.parametrize("key,target", SHORTCUTS)
+def test_function_keys_open_their_screen_from_every_screen(window, origin, key, target):
+    """Scenarios: F1 from Home / F2 from Dashboard / F3 from Options / F4 from VE calibration."""
+    window.show_screen(origin)
+
+    window.keyPressEvent(key_press(key))
+
+    assert window._current_screen_name == target
+
+
+def test_shortcut_of_the_visible_screen_does_nothing(window):
+    """Scenario: Shortcut of the visible screen."""
+    window.show_screen("dashboard")
+    screen = window._screens["dashboard"]
+    screen.on_activated = Mock()
+    screen.on_deactivated = Mock()
+
+    window.keyPressEvent(key_press(Qt.Key.Key_F1))
+
+    screen.on_activated.assert_not_called()
+    screen.on_deactivated.assert_not_called()
+    assert window._current_screen_name == "dashboard"
+
+
+def test_held_shortcut_switches_once(window):
+    """Scenario: Held shortcut."""
+    options = window._screens["options"]
+    options.on_activated = Mock()
+
+    window.keyPressEvent(key_press(Qt.Key.Key_F4))
+    for _ in range(5):
+        window.keyPressEvent(key_press(Qt.Key.Key_F4, auto_repeat=True))
+
+    options.on_activated.assert_called_once()
+
+
+def test_auto_repeat_shortcut_alone_does_not_switch(window):
+    window.keyPressEvent(key_press(Qt.Key.Key_F2, auto_repeat=True))
+
+    assert window._current_screen_name == "home"
+
+
+def test_shortcut_keys_are_not_delivered_to_any_screen(window):
+    """Scenario: Shortcut key not delivered."""
+    for screen in window._screens.values():
+        screen.keyPressEvent = Mock()
+        screen.keyReleaseEvent = Mock()
+    window.show_screen("dashboard")
+
+    for key, _ in SHORTCUTS:
+        window.keyPressEvent(key_press(key))
+        window.keyReleaseEvent(key_press(key))
+
+    for screen in window._screens.values():
+        screen.keyPressEvent.assert_not_called()
+        screen.keyReleaseEvent.assert_not_called()
+
+
+@pytest.mark.parametrize("screen", ["dashboard", "ve_calibration", "ignition_tuning"])
+def test_shortcut_is_not_announced_as_a_key_event(window, pressed, screen):
+    """Scenario: Shortcut not announced."""
+    window.show_screen(screen)
+
+    window.keyPressEvent(key_press(Qt.Key.Key_F1))
+
+    assert pressed == []
+
+
+def test_enter_on_options_is_not_announced(window, pressed):
+    """Requirement: Phase toggle (no event mark on the Options screen)."""
+    window.show_screen("options")
+    window.keyPressEvent(key_press(Qt.Key.Key_Return))
+
+    assert pressed == []
+
+
+def test_opening_options_with_the_shortcut_requests_the_parameter_block(window, ecu_commands):
+    """Requirement: Refresh on activation (through the window)."""
+    from app.masterinjection.protocol import EcuCommand
+
+    window.keyPressEvent(key_press(Qt.Key.Key_F4))
+
+    assert ecu_commands == [(EcuCommand.PARAMETERS_X02, None)]
+
+
+def test_x02_lines_reach_the_options_screen(window):
+    """Wiring: the raw ECU lines are forwarded to the Options screen."""
+    window.on_ecu_line("#X02;600;400;6;0;117;8000;6100;6300;5;2000;1750;1;1960;2;100;2")
+
+    assert window._screens["options"]._field_rows[0][2].text() == "Positiva"

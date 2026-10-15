@@ -177,3 +177,47 @@ def test_concurrent_updates_are_consistent():
         t.join()
 
     assert errors == []
+
+
+# ------------------------------------------------------------ parameter block X02
+
+def test_parameter_block_never_received_reads_as_nothing():
+    """Scenario: Never received (parameter block)."""
+    assert vehicle_state.get_x02() is None
+
+
+def test_setting_the_parameter_block_emits_event(events):
+    """Scenario: Parameter block loaded."""
+    block = list(range(100, 116))
+    vehicle_state.set_x02(block)
+
+    assert vehicle_state.get_x02() == block
+    assert [(e.type_, e.args) for e in events] == [(EventType.PARAMETER_BLOCK, [block])]
+
+
+def test_parameter_block_with_wrong_length_is_ignored(events):
+    """Scenario: Wrong length (parameter block)."""
+    vehicle_state.set_x02([1] * 16)
+    events.clear()
+
+    vehicle_state.set_x02([2] * 15)
+
+    assert vehicle_state.get_x02() == [1] * 16
+    assert events == []
+
+
+def test_a_newer_parameter_block_replaces_the_older_one():
+    """Scenario: Replacement."""
+    vehicle_state.set_x02([1] * 16)
+    vehicle_state.set_x02([2] * 16)
+
+    assert vehicle_state.get_x02() == [2] * 16
+
+
+def test_parameter_block_reader_gets_a_copy():
+    """Scenario: Copy returned."""
+    vehicle_state.set_x02([1] * 16)
+
+    vehicle_state.get_x02()[11] = 99
+
+    assert vehicle_state.get_x02() == [1] * 16

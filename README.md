@@ -19,6 +19,8 @@ A real-time telemetry dashboard for the Master Injection ECU. Streams sensor dat
 - **Lambda loop control** — open and close the lambda loop from the VE calibration screen with a keystroke; plays a configurable sound on each command
 - **CSV logging** — one file per run; appends every ECU frame with a millisecond Unix timestamp and an optional event label
 - **Ignition tuning** — on-road search for the best spark advance at light load: one global advance offset (±1° per key press) applied to the ignition rows up to a MAP limit, with one column per offset comparing injection time, MAP and pedal at the same RPM and gear
+- **Options screen** — change the engine phase (Negativa / Positiva) from the car: the app reads the ECU `#X02` block, replaces only the phase value and writes it back one second after the last change, without saving it to the ECU memory
+- **Global shortcuts** — **F1** Dashboard, **F2** VE calibration, **F3** Ignition tuning, **F4** Options, from any screen
 - **Manual event marking** — press **Enter** on the Dashboard, the VE calibration screen or the ignition tuning screen to beep and stamp `MARK` on the next CSV row
 - **Automatic reconnection** — detects dropped Bluetooth connections and reconnects without restarting the app, retrying once per second
 - **Connection error alerts** — a square, dialog-like overlay shows the failure (port, error detail) for 2 seconds on whatever screen is active, without taking the keyboard; the same error is not repeated while it persists
@@ -150,7 +152,7 @@ Signal definitions (name, ECU index, unit, limits, graph color, alarm thresholds
 
 ## Screens
 
-The app uses a full-screen stacked layout. Navigation between screens is keyboard-only. **Esc** returns to the Home screen from the Dashboard, the VE calibration screen and the ignition tuning screen.
+The app uses a full-screen stacked layout. Navigation between screens is keyboard-only. **Esc** returns to the Home screen from the Dashboard, the VE calibration screen, the ignition tuning screen and the Options screen. **F1** to **F4** open the Dashboard, VE calibration, Ignition tuning and Options from any screen.
 
 ### Home Screen
 
@@ -158,8 +160,15 @@ The entry point of the application. Displays the app title, connection status, a
 
 - Title: `Master Injection` centered at the top
 - Connection status: port/baudrate (or mock file path) + a colored dot — green when connected, red when disconnected. Refreshed every 500 ms.
-- Menu items: `Dashboard`, `Calibração de VE` and `Ajuste de Ignição`
+- Menu items: `Dashboard`, `Calibração de VE`, `Ajuste de Ignição` and `Opções`
 - Keyboard hint at the bottom
+
+### Options Screen
+
+List of ECU settings changed from the keyboard. For now it has one field:
+
+- **Fase** — `Negativa` or `Positiva` (`—` while the ECU value is unknown). **Enter** toggles it; the field shows the requested value followed by `…` while the change is in progress. One second after the last change the app requests `#X02`, replaces only the phase value (position 11, `0` = Negativa, `1` = Positiva), writes the block back (playing the VE confirmation sound `ve_calibration.ve_sound`) and reads it again to confirm. The write-on-memory command (`#D04`) is **not** sent, so the phase returns to the stored one when the ECU is power-cycled.
+- A status line shows `Alteração pendente…`, `Enviando para a ECU…`, `Fase aplicada (não gravada na memória)` or the failure (`Sem resposta da ECU`, `Resposta #X02 inválida`, `A ECU manteve a fase …`). Enter here does not stamp a `MARK` in the CSV log.
 
 ### Dashboard Screen
 
@@ -200,6 +209,9 @@ Built to be used while driving, with almost no looking: the driver holds a stead
 | **Enter** | Dashboard, VE Calibration, Ignition Tuning | Beep + stamp `MARK` on the next CSV row |
 | **↑ / ↓** | Home | Navigate menu |
 | **Enter** | Home | Open selected screen |
+| **F1** / **F2** / **F3** / **F4** | Any screen | Open the Dashboard / VE Calibration / Ignition Tuning / Options screen |
+| **Esc** | Options | Return to Home screen |
+| **Enter** | Options | Toggle the phase (Negativa ↔ Positiva), written to the ECU 1 s after the last change, not saved to memory |
 | **↑ / ↓** | VE Calibration | Adjust VE ±5 raw units (0.5 %) at the current operating point |
 | **O** | VE Calibration | Send `LAMBDA_LOOP_OPEN` to the ECU + play sound |
 | **P** | VE Calibration | Send `LAMBDA_LOOP_CLOSE` to the ECU + play sound |

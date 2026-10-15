@@ -38,7 +38,8 @@ def test_home_shows_title_menu_and_hint(home):
     texts = label_texts(home)
 
     assert "Master Injection" in texts
-    assert texts.index("Dashboard") < texts.index("Calibração de VE") < texts.index("Ajuste de Ignição")
+    assert (texts.index("Dashboard") < texts.index("Calibração de VE") < texts.index("Ajuste de Ignição")
+            < texts.index("Opções"))
     assert "↑↓ Navegar | Enter Selecionar" in texts
 
 
@@ -60,7 +61,7 @@ def test_down_moves_to_next_item(home):
 
 def test_down_from_last_item_wraps_to_first(home):
     """Scenario: Wrap down."""
-    for _ in range(3):
+    for _ in range(4):
         home.keyPressEvent(key_press(Qt.Key.Key_Down))
     home.keyPressEvent(key_press(Qt.Key.Key_Return))
 
@@ -72,7 +73,7 @@ def test_up_from_first_item_wraps_to_last(home):
     home.keyPressEvent(key_press(Qt.Key.Key_Up))
     home.keyPressEvent(key_press(Qt.Key.Key_Return))
 
-    assert home.requested == ["ignition_tuning"]
+    assert home.requested == ["options"]
 
 
 def test_ignition_tuning_entry_opens_the_ignition_tuning_screen(home):
@@ -82,6 +83,15 @@ def test_ignition_tuning_entry_opens_the_ignition_tuning_screen(home):
     home.keyPressEvent(key_press(Qt.Key.Key_Return))
 
     assert home.requested == ["ignition_tuning"]
+
+
+def test_options_entry_opens_the_options_screen(home):
+    """Scenario: Options entry."""
+    for _ in range(3):
+        home.keyPressEvent(key_press(Qt.Key.Key_Down))
+    home.keyPressEvent(key_press(Qt.Key.Key_Return))
+
+    assert home.requested == ["options"]
 
 
 @pytest.mark.parametrize("enter", [Qt.Key.Key_Return, Qt.Key.Key_Enter])

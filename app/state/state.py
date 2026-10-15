@@ -25,6 +25,7 @@ class VehicleState:
         self._map_breakpoints: list[int] = [0 for _ in range(16)]
         self._ve_map: list[list[int]] = [[0 for _ in range(16)] for _ in range(16)]
         self._ignition_map: list[list[int]] = [[0 for _ in range(16)] for _ in range(16)]
+        self._x02: Optional[list[int]] = None
 
     @property
     def emitter(self):
@@ -102,6 +103,18 @@ class VehicleState:
         with self._lock:
             self._ignition_map[ign_idx] = ign_line
             self.emitter.emit(VehicleStateChangeEvent(EventType.IGNITION_MAP, [ign_idx, ign_line]))
+
+    def get_x02(self) -> Optional[list[int]]:
+        """A copy of the latest #X02 parameter block, or None when none has been received."""
+        with self._lock:
+            return None if self._x02 is None else list(self._x02)
+
+    def set_x02(self, values: list[int]) -> None:
+        if len(values) != 16:
+            return
+        with self._lock:
+            self._x02 = list(values)
+            self.emitter.emit(VehicleStateChangeEvent(EventType.PARAMETER_BLOCK, [list(values)]))
 
 
 vehicle_state = VehicleState()
