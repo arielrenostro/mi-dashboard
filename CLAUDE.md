@@ -56,7 +56,7 @@ python3 -m venv .venv-wsl
 
 ## Configuration (`config.json`)
 
-Settings are loaded from `config.json` in the working directory, or from the file named by the `MI_DASHBOARD_CONFIG_FILE` environment variable. If the file is absent, built-in defaults apply. Sections: `connection`, `alarm`, `datalog`, `dashboard`, `ve_calibration`, `ignition_tuning`. Keys and defaults are specified in `openspec/specs/app-configuration/spec.md`.
+Settings are loaded from `config.json` in the working directory, or from the file named by the `MI_DASHBOARD_CONFIG_FILE` environment variable. If the file is absent, built-in defaults apply. Sections: `connection`, `alarm`, `datalog`, `dashboard`, `ve_calibration`, `ignition_tuning` (analysed gears are the list `ignition_tuning.gears`). Keys and defaults are specified in `openspec/specs/app-configuration/spec.md`.
 
 All signal indices, limits, display formats and graph colors are intentionally hardcoded in `app/masterinjection/signal.py` — this is a personal script.
 
@@ -69,7 +69,8 @@ app/masterinjection/       Signal catalog, SignalProcessor, protocol enums
 app/state/                 VehicleState (shared, RLock-protected) and change events
 app/alarm/                 AlarmProcessor (limit checks + alarm sound)
 app/log_writer/            CSV LogWriter (own thread)
-app/ui/                    AppWindow, Home, Dashboard, VE calibration, ignition tuning, SignalCard
+app/ui/                    AppWindow, Home, Dashboard, VE calibration, ignition tuning (per-gear analysis,
+                           IgnitionResultsLog CSV snapshot in datalog.path), SignalCard
 app/ui/common/             RowWriteController (debounced row-by-row map write, shared by VE and ignition)
 app/config.py              config.json loader
 ```

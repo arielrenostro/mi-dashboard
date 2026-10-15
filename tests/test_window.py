@@ -1,12 +1,16 @@
 """Spec: openspec/specs/screen-navigation (full-screen window, lifecycle, key routing)."""
+import csv
+import os
 from unittest.mock import Mock
 
 import pytest
 from PyQt6.QtCore import Qt
 
 from app.masterinjection.signal_processor import SignalProcessor
+from app.ui.ignition_tuning.ignition_map_state import IgnitionMapState
+from app.ui.ignition_tuning.results_log import IgnitionResultsLog
 from app.ui.window import AppWindow
-from tests.helpers import SAMPLE_FRAME, key_press
+from tests.helpers import MAP_AXIS, SAMPLE_FRAME, ignition_set, key_press
 
 
 @pytest.fixture
@@ -336,3 +340,36 @@ def test_telemetry_reaches_the_ignition_tuning_screen_only_while_it_is_active(wi
     window.show_screen("ignition_tuning")
     processor.emitter.emit(ignition_set())
     assert len(calls) == 1
+
+
+def test_closing_the_window_writes_the_pending_ignition_results(window, processor, tmp_path):
+    """Scenario: Ignition results are kept (app-lifecycle)."""
+    screen = window._screens["ignition_tuning"]
+    clock = [0.0]
+    screen._clock = lambda: clock[0]
+    screen._results = IgnitionResultsLog(screen._analysis, directory=str(tmp_path), clock=lambda: clock[0])
+    screen._state = IgnitionMapState(max_map_kpa=70, ceiling=50)
+    screen._state.load_breakpoints_map(MAP_AXIS)
+    for row in range(16):
+        screen._state.load_row(row, [20 + row + col for col in range(16)])
+    window.show_screen("ignition_tuning")
+    for _ in range(14):  # 5 s of settling after the loop closes, then four samples (the first one wrote the file)
+        processor.emitter.emit(ignition_set())
+        clock[0] += 0.5
+    [name] = [f for f in os.listdir(tmp_path) if f.startswith("ignition_results_")]
+    with open(tmp_path / name, newline="") as f:
+        assert list(csv.reader(f, delimiter=";"))[1][5] == "1"
+
+    window.close()
+
+    with open(tmp_path / name, newline="") as f:
+        assert list(csv.reader(f, delimiter=";"))[1][5] == "4"
+
+
+def test_closing_the_window_without_ignition_results_is_harmless(window, tmp_path):
+    window._screens["ignition_tuning"]._results = IgnitionResultsLog(
+        window._screens["ignition_tuning"]._analysis, directory=str(tmp_path))
+
+    window.close()
+
+    assert os.listdir(tmp_path) == []

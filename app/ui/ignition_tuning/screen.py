@@ -16,6 +16,7 @@ from app.ui.components.signal_card import SignalCard
 from app.ui.ignition_tuning.analysis import AnalysisStatus, IgnitionAnalysis, ScenarioStats
 from app.ui.ignition_tuning.ignition_map_state import IgnitionMapState, ignition_map_state
 from app.ui.ignition_tuning.ignition_write_controller import IgnitionWriteController
+from app.ui.ignition_tuning.results_log import IgnitionResultsLog
 
 # Signals shown as cards in the top bar, in order
 _TOP_BAR_SIGNALS = [
@@ -25,6 +26,12 @@ _TOP_BAR_SIGNALS = [
     Signal.GEAR,
     Signal.IGN,
     Signal.LAMBDA,
+]
+
+# Second line of the top bar, before the gear indicator and the RPM band
+_SECOND_LINE_SIGNALS = [
+    Signal.CLT,
+    Signal.IAT,
 ]
 
 _STATUS_COLORS = {
@@ -40,7 +47,7 @@ _PLAIN_BORDER = "#151515"
 _CURRENT_HEADER_BG = "#1E90FF"
 _DIM_TEXT = "#777777"
 
-_FOOTER_TEXT = "↑ +1°   ↓ -1°   Espaço Pausa   X Descarta pior   R Resetar   ESC Voltar"
+_FOOTER_TEXT = "↑ +1°   ↓ -1°   ←→ Marcha   Espaço Pausa   X Descarta pior   R Resetar   ESC Voltar"
 _EMPTY_TEXT = "Sem amostras ainda: mantenha a faixa de RPM, a marcha e o lambda em malha fechada"
 
 
@@ -52,6 +59,15 @@ def format_offset(offset: int) -> str:
 def format_column_offset(offset: int) -> str:
     """Column header form of the offset: `+1°`, `0° orig`, `-1°`."""
     return "0° orig" if offset == 0 else f"{offset:+d}°"
+
+
+def format_gear_indicator(gears: list, shown: int, with_data: list) -> str:
+    """Every configured gear, the shown one in brackets, followed by a dot when it holds scenarios: `4ª•  [5ª]`."""
+    parts = []
+    for gear in sorted(gears):
+        text = f"{gear}ª{'•' if gear in with_data else ''}"
+        parts.append(f"[{text}]" if gear == shown else text)
+    return "  ".join(parts)
 
 
 def format_time(seconds: float) -> str:
@@ -82,9 +98,9 @@ def diff_color(diff: Optional[float]) -> str:
 
 
 class ScenarioColumn(QFrame):
-    """One scenario (one ignition offset) of the tuning screen."""
+    """One scenario (one ignition offset of the shown gear) of the tuning screen."""
 
-    _ROWS = ("header", "band", "time", "ign", "inj", "inj_diff", "map", "map_diff", "pedal", "pedal_diff",
+    _ROWS = ("header", "time", "ign", "inj", "inj_diff", "map", "map_diff", "pedal", "pedal_diff",
              "lam", "knock")
 
     def __init__(self, offset: int):
@@ -110,12 +126,11 @@ class ScenarioColumn(QFrame):
         layout.addStretch()
         self._apply_frame_style()
 
-    def update_from(self, stats: ScenarioStats, band: str, is_current: bool):
+    def update_from(self, stats: ScenarioStats, is_current: bool):
         self.is_best = stats.is_best
         self.is_current = is_current
         text = self.labels
         text["header"].setText(format_column_offset(stats.offset))
-        text["band"].setText(band)
         text["time"].setText(format_time(stats.time_s))
         text["ign"].setText(f"IGN {stats.ign:.1f}")
         text["inj"].setText(f"{stats.inj_pulse:.2f} ms")
@@ -142,15 +157,19 @@ class ScenarioColumn(QFrame):
 
 class IgnitionTuningScreen(Screen):
     """
-    Ignition tuning: a very small set of keys (Up, Down, Space, R, Esc) moves one global advance offset
-    and compares, per offset, what the engine needed to hold the same speed.
+    Ignition tuning: a very small set of keys (Up, Down, Left, Right, Space, X, R, Esc) moves one global advance
+    offset and compares, per offset and gear, what the engine needed to hold the same speed.
     """
 
     def __init__(self, close_fn: Callable, state: Optional[IgnitionMapState] = None,
-                 analysis: Optional[IgnitionAnalysis] = None, clock: Callable[[], float] = time.monotonic):
+                 analysis: Optional[IgnitionAnalysis] = None, clock: Callable[[], float] = time.monotonic,
+                 results: Optional[IgnitionResultsLog] = None):
         super().__init__(close_fn)
         self._state = ignition_map_state if state is None else state
         self._analysis = IgnitionAnalysis() if analysis is None else analysis
+        self._results = IgnitionResultsLog(self._analysis) if results is None else results
+        self._shown_gear = max(self._analysis.gears)
+        self._engaged_gear: Optional[int] = None
         self._clock = clock
         self._active = False
         self._columns: list[ScenarioColumn] = []
@@ -167,7 +186,6 @@ class IgnitionTuningScreen(Screen):
         root_layout.addWidget(self._build_footer())
 
         cfg = config.ignition_tuning
-        self._band_text = f"{self._analysis.rpm_min}-{self._analysis.rpm_max}"
         self._players: dict[str, QMediaPlayer] = {}
         self._outputs: list[QAudioOutput] = []
         for name, path in (("ready", cfg.ready_sound), ("pause", cfg.pause_sound), ("resume", cfg.resume_sound),
@@ -207,29 +225,61 @@ class IgnitionTuningScreen(Screen):
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(0)
 
+        lines = QVBoxLayout()
+        lines.setSpacing(0)
+
+        first = QHBoxLayout()
+        first.setSpacing(0)
         self._top_bar_cards: dict[Signal, SignalCard] = {}
         for signal in _TOP_BAR_SIGNALS:
             card = SignalCard(signal)
-            layout.addWidget(card)
+            first.addWidget(card)
             self._top_bar_cards[signal] = card
+        lines.addLayout(first)
+
+        second = QHBoxLayout()
+        second.setSpacing(0)
+        self._second_line_cards: dict[Signal, SignalCard] = {}
+        for signal in _SECOND_LINE_SIGNALS:
+            card = SignalCard(signal)
+            second.addWidget(card)
+            self._second_line_cards[signal] = card
+        second.addStretch()
+        self.gear_label = self._info_label(30)
+        self.band_label = self._info_label(30)
+        second.addWidget(self.gear_label)
+        second.addSpacing(40)
+        second.addWidget(self.band_label)
+        second.addStretch()
+        lines.addLayout(second)
+        layout.addLayout(lines, stretch=1)
 
         info = QVBoxLayout()
         info.setSpacing(0)
         self.offset_label = QLabel(format_offset(0))
-        offset_font = QFont("Arial", 48)
-        offset_font.setBold(True)
-        self.offset_label.setFont(offset_font)
+        self.offset_label.setFont(self._bold_font(48))
         self.offset_label.setStyleSheet("color: white;")
         self.offset_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_label = QLabel(AnalysisStatus.WAITING_ECU.value)
-        status_font = QFont("Arial", 20)
-        status_font.setBold(True)
-        self.status_label.setFont(status_font)
+        self.status_label.setFont(self._bold_font(20))
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         info.addWidget(self.offset_label)
         info.addWidget(self.status_label)
         layout.addLayout(info)
         return container
+
+    @staticmethod
+    def _bold_font(size: int) -> QFont:
+        font = QFont("Arial", size)
+        font.setBold(True)
+        return font
+
+    def _info_label(self, size: int) -> QLabel:
+        label = QLabel("")
+        label.setFont(self._bold_font(size))
+        label.setStyleSheet("color: white;")
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        return label
 
     def _build_centre(self) -> QWidget:
         container = QWidget()
@@ -271,6 +321,7 @@ class IgnitionTuningScreen(Screen):
         self._active = False
         self._refresh_timer.stop()
         self._writer.set_muted(True)  # a write still pending plays no sound while hidden
+        self._results.flush()
 
     # ── Keys ─────────────────────────────────────────────────────────────────
 
@@ -284,6 +335,10 @@ class IgnitionTuningScreen(Screen):
             self._change_offset(+1)
         elif key == Qt.Key.Key_Down:
             self._change_offset(-1)
+        elif key == Qt.Key.Key_Left:
+            self._shift_gear(-1)
+        elif key == Qt.Key.Key_Right:
+            self._shift_gear(+1)
         elif key == Qt.Key.Key_Space:
             self._toggle_pause()
         elif key == Qt.Key.Key_X:
@@ -307,13 +362,22 @@ class IgnitionTuningScreen(Screen):
             self._play("pause")
         self._refresh()
 
+    def _shift_gear(self, delta: int):
+        gears = sorted(self._analysis.gears)
+        index = gears.index(self._shown_gear) + delta
+        if 0 <= index < len(gears):
+            self._shown_gear = gears[index]
+            self._refresh()
+
     def _discard_worst(self):
-        if self._analysis.discard_worst(self._state.offset):
+        if self._analysis.discard_worst(self._shown_gear, self._state.offset):
             self._play("discard")
+            self._results.tick()
             self._refresh()
 
     def _reset(self):
         self._state.reset()
+        self._results.end_run()  # the results of this run are final: the next sample starts a new file
         self._analysis.reset()
         self._analysis.offset_changed(self._clock())  # wait for the write that puts the original map back
         self._writer.on_adjustment_made()
@@ -330,9 +394,26 @@ class IgnitionTuningScreen(Screen):
         """Every parsed telemetry set. Only analysed while the screen is active."""
         if not self._active:
             return
+        self._follow_engaged_gear(signals)
         ready = self._analysis.process(signals, self._clock(), self._state.offset, self._state.is_loaded())
+        self._results.tick()
         if ready:
             self._play("ready")
+
+    def flush_results(self):
+        """Write the ignition results now if they changed (the window calls this when it closes)."""
+        self._results.flush()
+
+    def _follow_engaged_gear(self, signals: dict):
+        """The shown gear follows the engaged gear each time it changes to a configured gear."""
+        parsed = signals.get(Signal.GEAR)
+        if parsed is None:
+            return
+        gear = int(parsed.value)
+        if gear != self._engaged_gear:
+            self._engaged_gear = gear
+            if gear in self._analysis.gears:
+                self._shown_gear = gear
 
     def _on_write_finished(self):
         self._analysis.write_finished(self._clock())
@@ -350,21 +431,24 @@ class IgnitionTuningScreen(Screen):
         self._update_columns()
 
     def _update_top_bar(self):
-        for signal, card in self._top_bar_cards.items():
+        for signal, card in (*self._top_bar_cards.items(), *self._second_line_cards.items()):
             data = vehicle_state.get(signal)
             card.set_value(data.value_str if data else "--")
+        self.gear_label.setText(format_gear_indicator(
+            self._analysis.gears, self._shown_gear, self._analysis.gears_with_data()))
+        self.band_label.setText(f"Faixa {self._analysis.rpm_min}-{self._analysis.rpm_max}")
         self.offset_label.setText(format_offset(self._state.offset))
         status = self._analysis.status(vehicle_state.get_all(), self._clock(), self._state.is_loaded())
         self.status_label.setText(status.value)
         self.status_label.setStyleSheet(f"color: {_STATUS_COLORS[status]};")
 
     def _update_columns(self):
-        stats = self._analysis.scenarios()
+        stats = self._analysis.scenarios(self._shown_gear)
         offsets = [s.offset for s in stats]
         if offsets != [c.offset for c in self._columns]:
             self._rebuild_columns(offsets)
         for column, scenario in zip(self._columns, stats):
-            column.update_from(scenario, self._band_text, scenario.offset == self._state.offset)
+            column.update_from(scenario, scenario.offset == self._state.offset)
         self.empty_label.setVisible(not stats)
 
     def _rebuild_columns(self, offsets: list):

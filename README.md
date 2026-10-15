@@ -32,7 +32,7 @@ Live 16×16 VE map with heatmap coloring and the bilinear-interpolation highligh
 
 ### Ignition tuning
 
-Built for the road: hold a steady RPM in a fixed gear, raise the advance 1° at a time with **↑** and read, column by column, what the engine needed to keep the same speed. Each column is one advance offset, showing the analysed time, mean ignition, mean injection time, MAP, pedal, lambda and the knock counter increase, with the percentage difference to the best value of each sensor. The column with the lowest mean injection time gets the green border and the blue header marks the offset currently applied. **Space** pauses (hill ahead), **X** discards the worst column, **R** restores the original map. Sounds confirm each write, pause, discard and a column that gathered enough time, so the driver does not need to look at the screen.
+Built for the road: hold a steady RPM in a fixed gear, raise the advance 1° at a time with **↑** and read, column by column, what the engine needed to keep the same speed. Each column is one advance offset, showing the analysed time, mean ignition, mean injection time, MAP, pedal, lambda and the knock counter increase, with the percentage difference to the best value of each sensor. The column with the lowest mean injection time gets the green border and the blue header marks the offset currently applied. **Space** pauses (hill ahead), **X** discards the worst column, **R** restores the original map. Several gears can be analysed in the same session (`ignition_tuning.gears`, for example `[4, 5]`): the screen shows one gear at a time, follows the engaged gear, and **←** / **→** look at the other one. Comparisons are always made inside a gear. Sounds confirm each write, pause, discard and a column that gathered enough time, so the driver does not need to look at the screen.
 
 ![Ignition tuning screen](assets/ignition_tuning.png)
 
@@ -116,7 +116,7 @@ Settings are loaded from `config.json` in the working directory or from the file
   "ignition_tuning": {
     "rpm_min": 2900,
     "rpm_max": 3100,
-    "gear": 5,
+    "gears": [4, 5],
     "max_map_kpa": 70
   }
 }
@@ -137,7 +137,7 @@ Settings are loaded from `config.json` in the working directory or from the file
 | `ve_calibration.ve_sound` | `.wav` played after VE rows are written to the ECU |
 | `ve_calibration.closed_sound` / `open_sound` | `.wav` files played when the lambda loop is closed / opened |
 | `ignition_tuning.rpm_min` / `rpm_max` | RPM band (inclusive) analysed on the ignition tuning screen; default `2900` / `3100` |
-| `ignition_tuning.gear` | Gear in which samples are analysed; default `5` |
+| `ignition_tuning.gears` | List of gears in which samples are analysed, each with its own columns; default `[5]` |
 | `ignition_tuning.max_map_kpa` | Highest MAP axis value (kPa) of the ignition rows the offset changes; rows above stay untouched; default `70` |
 | `ignition_tuning.max_ignition` | Highest raw ignition value (degrees) a cell can reach; default `50` |
 | `ignition_tuning.settle_seconds` | Seconds ignored after a write, a resume or the lambda loop closing again; default `5` |
@@ -182,9 +182,12 @@ Live VE (Volumetric Efficiency) map viewer and editor. Allows real-time adjustme
 Built to be used while driving, with almost no looking: the driver holds a steady RPM in a fixed gear on a flat road, raises the advance one degree at a time and the screen shows what the engine needed to keep the same speed.
 
 - **Offset** — ↑ / ↓ move one global advance offset by ±1°. It is applied to every column of the ignition rows (`#I01`..`#I16`) whose MAP axis value is at or below `ignition_tuning.max_map_kpa`; higher rows are never touched. The written map is always `original + offset` (clamped to 0..`max_ignition`), so cells clamped at 0 return to their original value when the offset comes back up. Writes go to ECU RAM only: a power cycle restores the stored map.
-- **Columns** — one per offset tried, in ascending order: RPM band, analysed time, mean ignition, mean injection time, mean MAP, mean pedal, mean lambda and the knock counter increase. For injection time, MAP and pedal the percentage difference to the best value of that sensor is shown; the column with the lowest mean injection time (among columns with enough analysed time, at least two) gets a green border.
-- **What is analysed** — only frames with RPM inside the band, the configured gear, the lambda loop closed (1 or 2), not paused and past the settle time. **Space** pauses and resumes (for a hill ahead). **X** discards the worst column (highest mean injection time among the comparable ones) to clean up the comparison; it never discards the column of the current offset and does not touch the ECU map.
+- **Top bar** — two lines: RPM, MAP, pedal, gear, ignition and lambda; below them CLT, IAT, the gear indicator (`4ª•  [5ª•]`: the shown gear in brackets, a dot when a gear holds data) and the analysed RPM band.
+- **Gears** — the screen shows the columns of one configured gear. It follows the engaged gear whenever it changes to a configured one; **←** / **→** switch to the other configured gear (to review it while stopped) until the next gear change. Sampling always goes to the engaged gear, whatever is shown, and the percentage differences and the best column are computed inside each gear.
+- **Columns** — one per offset tried in the shown gear, in ascending order: analysed time, mean ignition, mean injection time, mean MAP, mean pedal, mean lambda and the knock counter increase. For injection time, MAP and pedal the percentage difference to the best value of that sensor is shown; the column with the lowest mean injection time (among columns with enough analysed time, at least two) gets a green border.
+- **What is analysed** — only frames with RPM inside the band, the configured gear, the lambda loop closed (1 or 2), not paused and past the settle time. **Space** pauses and resumes (for a hill ahead). **X** discards the worst column of the shown gear (highest mean injection time among the comparable ones) to clean up the comparison; it never discards the column of the current offset and does not touch the ECU map.
 - **Cues** — configurable sounds confirm a write, a pause / resume, a discard and a column that gathered enough time.
+- **Results file** — every analysis run is saved as `ignition_results_YYYYMMDD_HHMMSS.csv` in `datalog.path`: one row per gear and offset (statistics, percentage differences, best, and `Discarded = 1` for the scenarios dropped with **X**). The file is rewritten at most every 5 seconds while results change, and when leaving the screen, on reset and when the app closes. **R** closes the file; the next valid sample starts a new one.
 
 ---
 
@@ -202,9 +205,10 @@ Built to be used while driving, with almost no looking: the driver holds a stead
 | **P** | VE Calibration | Send `LAMBDA_LOOP_CLOSE` to the ECU + play sound |
 | **R** | VE Calibration | Reset all VE cells to the ECU values |
 | **↑ / ↓** | Ignition Tuning | Raise / lower the advance offset by 1° (held keys act once) |
+| **← / →** | Ignition Tuning | Show the previous / next configured gear (until the engaged gear changes) |
 | **Space** | Ignition Tuning | Pause / resume the analysis |
-| **X** | Ignition Tuning | Discard the worst scenario (not the current one); changes no map value |
-| **R** | Ignition Tuning | Offset back to 0, original ignition map written back, analysis cleared |
+| **X** | Ignition Tuning | Discard the worst scenario of the shown gear (not the current one); changes no map value |
+| **R** | Ignition Tuning | Offset back to 0, original ignition map written back, every gear cleared, results file closed |
 
 ---
 

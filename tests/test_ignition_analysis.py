@@ -1,4 +1,4 @@
-"""Spec: openspec/specs/ignition-analysis (change ignition-tuning-screen)."""
+"""Spec: openspec/specs/ignition-analysis (changes ignition-tuning-screen and ignition-multi-gear)."""
 import pytest
 
 from app.masterinjection.signal import Signal
@@ -35,7 +35,7 @@ class Rig:
     """Drives an IgnitionAnalysis with a fake clock and keeps the offset like the screen does."""
 
     def __init__(self, processor, step=0.5, **kwargs):
-        settings = dict(rpm_min=2900, rpm_max=3100, gear=5, settle_seconds=5, min_scenario_seconds=20)
+        settings = dict(rpm_min=2900, rpm_max=3100, gears=[5], settle_seconds=5, min_scenario_seconds=20)
         settings.update(kwargs)
         self.a = IgnitionAnalysis(**settings)
         self.processor = processor
@@ -77,8 +77,8 @@ class Rig:
         self.write()
         self.feed(5.0, **fields)
 
-    def stats(self):
-        return {s.offset: s for s in self.a.scenarios()}
+    def stats(self, gear=5):
+        return {s.offset: s for s in self.a.scenarios(gear)}
 
 
 @pytest.fixture
@@ -125,11 +125,11 @@ def test_a_set_in_the_wrong_gear_is_discarded(rig):
 
 
 def test_the_gear_comes_from_the_settings(processor):
-    rig = Rig(processor, gear=4).settled()
+    rig = Rig(processor, gears=[4]).settled()
 
     rig.feed(1.0, gear=4)
 
-    assert rig.stats()[0].samples == 2
+    assert rig.stats(4)[0].samples == 2
 
 
 def test_a_set_with_the_lambda_loop_open_is_discarded(rig):
@@ -258,7 +258,7 @@ def test_a_loop_excursion_outside_the_band_still_triggers_the_settle_time(rig):
     assert rig.stats()[0].samples > 0
 
 
-# -------------------------------------------------------------------- scenarios by offset
+# -------------------------------------------------------------------- scenarios by gear and offset
 
 def test_the_first_sample_at_a_new_offset_creates_its_scenario(rig):
     """Scenario: New offset."""
@@ -267,7 +267,7 @@ def test_the_first_sample_at_a_new_offset_creates_its_scenario(rig):
 
     rig.feed(1.0)
 
-    assert [s.offset for s in rig.a.scenarios()] == [0, 1]
+    assert [s.offset for s in rig.a.scenarios(5)] == [0, 1]
 
 
 def test_returning_to_an_offset_adds_to_its_scenario(rig):
@@ -292,7 +292,7 @@ def test_scenarios_are_ordered_by_offset_not_by_time(rig):
     rig.go_to(0)
     rig.feed(1.0)
 
-    assert [s.offset for s in rig.a.scenarios()] == [-1, 0, 1]
+    assert [s.offset for s in rig.a.scenarios(5)] == [-1, 0, 1]
 
 
 def test_reset_discards_every_scenario_and_resumes(rig):
@@ -302,7 +302,7 @@ def test_reset_discards_every_scenario_and_resumes(rig):
 
     rig.a.reset()
 
-    assert rig.a.scenarios() == []
+    assert rig.a.scenarios(5) == []
     assert rig.a.paused is False
 
 
@@ -469,7 +469,7 @@ def test_there_is_no_best_with_a_single_eligible_scenario(rig):
     """Scenario: Single eligible scenario."""
     rig.feed(21.0)
 
-    assert [s.is_best for s in rig.a.scenarios()] == [False]
+    assert [s.is_best for s in rig.a.scenarios(5)] == [False]
 
 
 def test_a_tie_goes_to_the_lower_offset(rig):
@@ -486,7 +486,7 @@ def test_only_one_scenario_is_best(rig):
     rig.go_to(+2, pulse=109)
     rig.feed(21.0, pulse=109)
 
-    assert [s.is_best for s in rig.a.scenarios()] == [False, True, False]
+    assert [s.is_best for s in rig.a.scenarios(5)] == [False, True, False]
 
 
 def test_a_zero_best_value_gives_no_percentage(rig):
@@ -510,7 +510,7 @@ def test_the_worst_scenario_is_discarded(rig):
     """Scenario: Worst discarded."""
     three_scenarios(rig)
 
-    assert rig.a.discard_worst(rig.offset) is True
+    assert rig.a.discard_worst(5, rig.offset) is True
 
     assert sorted(rig.stats()) == [1, 2]
 
@@ -519,17 +519,17 @@ def test_discarding_changes_neither_the_other_scenarios_nor_their_best(rig):
     three_scenarios(rig)
     before = {o: (s.samples, s.time_s, s.inj_pulse) for o, s in rig.stats().items() if o != 0}
 
-    rig.a.discard_worst(rig.offset)
+    rig.a.discard_worst(5, rig.offset)
 
     assert {o: (s.samples, s.time_s, s.inj_pulse) for o, s in rig.stats().items()} == before
-    assert [s.is_best for s in rig.a.scenarios()] == [False, True]
+    assert [s.is_best for s in rig.a.scenarios(5)] == [False, True]
 
 
 def test_nothing_is_discarded_when_the_worst_is_the_current_one(rig):
     """Scenario: Worst is the current one."""
     three_scenarios(rig, pulses=(108, 110, 112))  # +2 is the worst and the current offset
 
-    assert rig.a.discard_worst(rig.offset) is False
+    assert rig.a.discard_worst(5, rig.offset) is False
 
     assert sorted(rig.stats()) == [0, 1, 2]
 
@@ -537,8 +537,8 @@ def test_nothing_is_discarded_when_the_worst_is_the_current_one(rig):
 def test_no_other_scenario_takes_the_place_of_a_current_worst(rig):
     three_scenarios(rig, pulses=(108, 110, 112))
 
-    rig.a.discard_worst(rig.offset)
-    rig.a.discard_worst(rig.offset)
+    rig.a.discard_worst(5, rig.offset)
+    rig.a.discard_worst(5, rig.offset)
 
     assert sorted(rig.stats()) == [0, 1, 2]
 
@@ -547,13 +547,13 @@ def test_nothing_is_discarded_with_fewer_than_two_eligible_scenarios(rig):
     """Scenario: Fewer than two eligible."""
     rig.feed(21.0)
 
-    assert rig.a.discard_worst(rig.offset) is False
+    assert rig.a.discard_worst(5, rig.offset) is False
 
     assert sorted(rig.stats()) == [0]
 
 
 def test_nothing_is_discarded_without_scenarios(rig):
-    assert rig.a.discard_worst(0) is False
+    assert rig.a.discard_worst(5, 0) is False
 
 
 def test_scenarios_that_are_not_eligible_are_never_the_worst(rig):
@@ -565,7 +565,7 @@ def test_scenarios_that_are_not_eligible_are_never_the_worst(rig):
     rig.feed(5.0, pulse=130)  # worst by far, but not enough time
     rig.offset = +3  # the driver moved on
 
-    assert rig.a.discard_worst(rig.offset) is True
+    assert rig.a.discard_worst(5, rig.offset) is True
 
     assert sorted(rig.stats()) == [0, 2]  # +1 (the worst eligible) was discarded, +2 is untouched
 
@@ -578,7 +578,7 @@ def test_a_tie_discards_the_lower_offset(rig):
     rig.go_to(+2, pulse=108)
     rig.feed(21.0, pulse=108)
 
-    rig.a.discard_worst(rig.offset)
+    rig.a.discard_worst(5, rig.offset)
 
     assert sorted(rig.stats()) == [1, 2]
 
@@ -586,7 +586,7 @@ def test_a_tie_discards_the_lower_offset(rig):
 def test_returning_to_a_discarded_offset_starts_a_new_scenario(rig):
     """Scenario: Returning to a discarded offset."""
     three_scenarios(rig)
-    rig.a.discard_worst(rig.offset)
+    rig.a.discard_worst(5, rig.offset)
     assert 0 not in rig.stats()
 
     rig.go_to(0, pulse=112)
@@ -601,7 +601,7 @@ def test_repeated_discards_stop_at_one_eligible_scenario(rig):
     """Scenario: Repeated."""
     three_scenarios(rig)
 
-    assert [rig.a.discard_worst(rig.offset) for _ in range(3)] == [True, True, False]
+    assert [rig.a.discard_worst(5, rig.offset) for _ in range(3)] == [True, True, False]
 
     assert sorted(rig.stats()) == [2]  # one eligible scenario is left: nothing to compare, nothing to discard
 
@@ -613,7 +613,7 @@ def test_repeated_discards_stop_at_the_current_worst(rig):
     rig.go_to(+2, pulse=111)  # the current offset ends up the worst once +0 is gone
     rig.feed(21.0, pulse=111)
 
-    results = [rig.a.discard_worst(rig.offset) for _ in range(3)]
+    results = [rig.a.discard_worst(5, rig.offset) for _ in range(3)]
 
     assert results == [True, False, False]
     assert sorted(rig.stats()) == [1, 2]
@@ -744,5 +744,221 @@ def test_defaults_come_from_the_configuration(processor):
 
     a = IgnitionAnalysis()
 
-    assert (a.rpm_min, a.rpm_max, a.gear) == (config.ignition_tuning.rpm_min, config.ignition_tuning.rpm_max, config.ignition_tuning.gear)
+    assert (a.rpm_min, a.rpm_max, a.gears) == (
+        config.ignition_tuning.rpm_min, config.ignition_tuning.rpm_max, config.ignition_tuning.gears)
     assert (a.settle_seconds, a.min_scenario_seconds) == (5, 20)
+
+
+# ----------------------------------------------------------------- several gears (ignition-multi-gear)
+
+def two_gear_rig(processor, **kwargs):
+    return Rig(processor, gears=[4, 5], **kwargs).settled()
+
+
+def visit(rig, gear, pulses, **fields):
+    """Eligible scenarios of `gear` at offsets 0, +1, ... with one mean injection time (raw) each."""
+    for offset, pulse in enumerate(pulses):
+        rig.go_to(offset, gear=gear, pulse=pulse, **fields)
+        rig.feed(21.0, gear=gear, pulse=pulse, **fields)
+
+
+def test_a_second_configured_gear_is_analysed(processor):
+    """Scenario: Second configured gear."""
+    rig = two_gear_rig(processor)
+
+    rig.feed(1.0, gear=4)
+
+    assert rig.stats(4)[0].samples == 2
+
+
+def test_a_gear_that_is_not_configured_is_discarded(processor):
+    """Scenario: Gear not configured."""
+    rig = two_gear_rig(processor)
+
+    rig.feed(2.0, gear=3)
+
+    assert rig.a.gears_with_data() == []
+    assert rig.stats(3) == {}
+
+
+def test_the_same_offset_in_two_gears_makes_two_scenarios(processor):
+    """Scenario: Same offset in two gears."""
+    rig = two_gear_rig(processor)
+    rig.feed(2.0, gear=5, pulse=100)
+    rig.feed(1.0, gear=4, pulse=120)
+
+    assert rig.stats(5)[0].samples == 4 and rig.stats(5)[0].inj_pulse == pytest.approx(1.00)
+    assert rig.stats(4)[0].samples == 2 and rig.stats(4)[0].inj_pulse == pytest.approx(1.20)
+
+
+def test_changing_gear_does_not_start_settling(processor):
+    """Scenario: Gear change without settling."""
+    rig = two_gear_rig(processor)
+    rig.feed(2.0, gear=5)
+
+    rig.one(gear=4)
+
+    assert rig.stats(4)[0].samples == 1
+    assert rig.status(gear=4) == AnalysisStatus.ANALYSING
+
+
+def test_a_gear_change_ends_the_continuous_run(processor):
+    """Scenario: Gear change ends the run."""
+    rig = two_gear_rig(processor, step=0.1)
+
+    rig.one(gear=5, knock=40)
+    rig.one(gear=4, knock=45)
+    rig.one(gear=5, knock=50)
+
+    for gear in (4, 5):
+        assert rig.stats(gear)[0].time_s == 0.0
+        assert rig.stats(gear)[0].knock == 0
+
+
+def test_the_gears_holding_data_are_listed(processor):
+    """Scenario: Gears holding data."""
+    rig = two_gear_rig(processor)
+    rig.feed(1.0, gear=5)
+
+    assert rig.a.gears_with_data() == [5]
+
+    rig.feed(1.0, gear=4)
+
+    assert rig.a.gears_with_data() == [4, 5]
+
+
+def test_reset_clears_the_scenarios_of_every_gear(processor):
+    """Scenario: Reset (every gear)."""
+    rig = two_gear_rig(processor)
+    rig.feed(1.0, gear=5)
+    rig.feed(1.0, gear=4)
+
+    rig.a.reset()
+
+    assert rig.a.gears_with_data() == []
+    assert rig.stats(4) == {} and rig.stats(5) == {}
+
+
+def test_percentages_are_relative_inside_each_gear(processor):
+    """Scenario: Gears are independent."""
+    rig = two_gear_rig(processor)
+    rig.feed(21.0, gear=5, map=46)
+    rig.go_to(1, gear=5, map=47)
+    rig.feed(21.0, gear=5, map=47)
+    rig.feed(21.0, gear=4, map=60)
+    rig.go_to(0, gear=4, map=61)
+    rig.feed(21.0, gear=4, map=61)
+
+    assert rig.stats(5)[1].diff[Signal.MAP] == pytest.approx(2.174, abs=0.01)
+    assert rig.stats(4)[0].diff[Signal.MAP] == pytest.approx(1.667, abs=0.01)
+    assert rig.stats(4)[1].diff[Signal.MAP] == pytest.approx(0.0)
+
+
+def test_each_gear_has_its_own_best_scenario(processor):
+    """Scenario: One best per gear."""
+    rig = two_gear_rig(processor)
+    visit(rig, 5, (110, 108))
+    visit(rig, 4, (120, 125))
+
+    assert [s.is_best for s in rig.a.scenarios(5)] == [False, True]
+    assert [s.is_best for s in rig.a.scenarios(4)] == [True, False]
+
+
+def test_the_ready_notification_is_raised_in_each_gear(processor):
+    """Scenario: Threshold reached in the other gear."""
+    rig = two_gear_rig(processor, step=1.0)
+    rig.feed(21.0, gear=5)
+    assert rig.ready == 1
+
+    rig.feed(21.0, gear=4)
+
+    assert rig.ready == 2
+
+
+def test_discarding_acts_on_the_given_gear_only(processor):
+    """Scenario: Other gear untouched."""
+    rig = two_gear_rig(processor)
+    visit(rig, 5, (112, 110))
+    visit(rig, 4, (130, 128, 126))
+    before = [(s.offset, s.samples, s.time_s) for s in rig.a.scenarios(5)]
+
+    assert rig.a.discard_worst(4, rig.offset) is True
+
+    assert [s.offset for s in rig.a.scenarios(4)] == [1, 2]
+    assert [(s.offset, s.samples, s.time_s) for s in rig.a.scenarios(5)] == before
+
+
+def test_a_discarded_scenario_is_retained_with_its_statistics(rig):
+    """Scenario: Discarded scenario retained."""
+    three_scenarios(rig)
+
+    rig.a.discard_worst(5, rig.offset)
+
+    assert sorted(rig.stats()) == [1, 2]
+    [gone] = rig.a.discarded()
+    assert (gone.gear, gone.offset, gone.discarded) == (5, 0, True)
+    assert gone.inj_pulse == pytest.approx(1.12) and gone.time_s > 20
+
+
+def test_the_same_gear_and_offset_can_be_retained_twice(rig):
+    """Scenario: Same key twice."""
+    three_scenarios(rig)
+    rig.a.discard_worst(5, rig.offset)
+    rig.go_to(0, pulse=115)
+    rig.feed(21.0, pulse=115)
+    rig.go_to(2)
+
+    assert rig.a.discard_worst(5, rig.offset) is True
+
+    assert [(s.gear, s.offset) for s in rig.a.discarded()] == [(5, 0), (5, 0)]
+    assert [round(s.inj_pulse, 2) for s in rig.a.discarded()] == [1.12, 1.15]
+
+
+def test_a_discarded_scenario_takes_no_part_in_the_comparison(rig):
+    """Scenario: Discarded not compared."""
+    rig.feed(21.0, pulse=112, map=40)  # worst injection time, lowest MAP
+    rig.go_to(1, pulse=110, map=46)
+    rig.feed(21.0, pulse=110, map=46)
+    rig.go_to(2, pulse=108, map=47)
+    rig.feed(21.0, pulse=108, map=47)
+
+    rig.a.discard_worst(5, rig.offset)
+
+    stats = rig.stats()
+    assert sorted(stats) == [1, 2]
+    assert stats[1].diff[Signal.MAP] == pytest.approx(0.0)
+    assert stats[2].diff[Signal.MAP] == pytest.approx(2.174, abs=0.01)
+    assert [o for o, s in stats.items() if s.is_best] == [2]
+
+
+def test_reset_clears_the_discarded_scenarios(rig):
+    """Scenario: Cleared by reset."""
+    three_scenarios(rig)
+    rig.a.discard_worst(5, rig.offset)
+
+    rig.a.reset()
+
+    assert rig.a.discarded() == []
+
+
+def test_the_revision_changes_with_samples_discards_and_resets(rig):
+    revision = rig.a.revision
+
+    rig.feed(1.0, rpm=3400)  # discarded sets
+    assert rig.a.revision == revision
+
+    rig.feed(1.0)
+    assert rig.a.revision > revision
+    revision = rig.a.revision
+
+    rig.a.pause()
+    rig.a.resume(rig.t)
+    assert rig.a.revision == revision
+
+    rig.a.reset()
+    assert rig.a.revision > revision
+
+    three_scenarios(rig)
+    revision = rig.a.revision
+    rig.a.discard_worst(5, rig.offset)
+    assert rig.a.revision > revision

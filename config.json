@@ -56,6 +56,7 @@
     ]
   },
   "ignition_tuning": {
+    "gears": [4, 5],
     "write_sound": "resources/papaleguas.mp3",
     "ready_sound": "resources/closed.wav",
     "pause_sound": "resources/open.wav",

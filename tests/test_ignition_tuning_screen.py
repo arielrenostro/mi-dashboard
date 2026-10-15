@@ -1,4 +1,7 @@
-"""Spec: openspec/specs/ignition-tuning-screen (change ignition-tuning-screen)."""
+"""Spec: openspec/specs/ignition-tuning-screen (changes ignition-tuning-screen and ignition-multi-gear)."""
+import csv
+import os
+from datetime import datetime, timedelta
 from unittest.mock import Mock
 
 import pytest
@@ -6,13 +9,16 @@ from PyQt6.QtCore import Qt
 
 import app.ui.ignition_tuning.ignition_write_controller as write_module
 from app.masterinjection.protocol import EcuCommand
+from app.masterinjection.signal import Signal
+from app.masterinjection.signal_processor import SignalProcessor
 from app.state.state import vehicle_state
 from app.ui.ignition_tuning.analysis import IgnitionAnalysis
 from app.ui.ignition_tuning.ignition_map_state import IgnitionMapState
+from app.ui.ignition_tuning.results_log import IgnitionResultsLog
 from app.ui.ignition_tuning.screen import (
     IgnitionTuningScreen, diff_color, format_column_offset, format_diff, format_offset, format_time,
 )
-from tests.helpers import MAP_AXIS, ignition_set, key_press
+from tests.helpers import MAP_AXIS, frame_with, ignition_set, key_press
 
 AFFECTED = 7  # MAP_AXIS 10..70 kPa are rows 0..6
 
@@ -32,8 +38,9 @@ class RecordingConnection:
 class Env:
     """The screen with a fake clock, a recording ECU connection and mocked players."""
 
-    def __init__(self, screen, connection, clock):
+    def __init__(self, screen, connection, clock, results_dir=None):
         self.screen = screen
+        self.results_dir = results_dir
         self.connection = connection
         self.clock = clock
         self.close = screen.close_fn
@@ -77,16 +84,25 @@ class Env:
         return self.columns()[column_index].labels[name].text()
 
 
+def make_screen(clock, tmp_path, gears, state=None):
+    """A screen whose results go to `tmp_path` and whose clock is `clock[0]`."""
+    state = IgnitionMapState(max_map_kpa=70, ceiling=50) if state is None else state
+    analysis = IgnitionAnalysis(rpm_min=2900, rpm_max=3100, gears=gears, settle_seconds=5, min_scenario_seconds=20)
+    wall = datetime(2026, 10, 15, 14, 0, 0)
+    results = IgnitionResultsLog(analysis, directory=str(tmp_path), clock=lambda: clock[0],
+                                 wall_clock=lambda: wall + timedelta(seconds=clock[0]))
+    return IgnitionTuningScreen(close_fn=Mock(), state=state, analysis=analysis, clock=lambda: clock[0],
+                                results=results)
+
+
 @pytest.fixture
-def env(qapp):
+def env(qapp, tmp_path):
     connection = RecordingConnection()
     clock = [100.0]
-    state = IgnitionMapState(max_map_kpa=70, ceiling=50)
-    analysis = IgnitionAnalysis(rpm_min=2900, rpm_max=3100, gear=5, settle_seconds=5, min_scenario_seconds=20)
 
     write_module_original = write_module.get_ecu_connection
     write_module.get_ecu_connection = lambda: connection
-    screen = IgnitionTuningScreen(close_fn=Mock(), state=state, analysis=analysis, clock=lambda: clock[0])
+    screen = make_screen(clock, tmp_path, [5])
     screen._players = {name: Mock() for name in screen._players}
     screen._writer._player = Mock()
     # The ECU publishes the axis and the rows to the shared state; the screen reacts to those events.
@@ -94,20 +110,38 @@ def env(qapp):
     for row in range(16):
         vehicle_state.set_ignition_row(base_row(row), row)
     screen.on_activated()
-    yield Env(screen, connection, clock)
+    yield Env(screen, connection, clock, tmp_path)
     screen.on_deactivated()
     write_module.get_ecu_connection = write_module_original
 
 
 @pytest.fixture
-def unloaded(qapp):
+def two_gears(qapp, tmp_path):
+    """A screen analysing 4th and 5th gear."""
+    connection = RecordingConnection()
+    clock = [100.0]
+    write_module_original = write_module.get_ecu_connection
+    write_module.get_ecu_connection = lambda: connection
+    screen = make_screen(clock, tmp_path, [4, 5])
+    screen._players = {name: Mock() for name in screen._players}
+    screen._writer._player = Mock()
+    vehicle_state.set_map_breakpoints(MAP_AXIS)
+    for row in range(16):
+        vehicle_state.set_ignition_row(base_row(row), row)
+    screen.on_activated()
+    yield Env(screen, connection, clock, tmp_path)
+    screen.on_deactivated()
+    write_module.get_ecu_connection = write_module_original
+
+
+@pytest.fixture
+def unloaded(qapp, tmp_path):
     """A screen whose ECU data (axis and rows) never arrived."""
     connection = RecordingConnection()
     clock = [100.0]
     write_module_original = write_module.get_ecu_connection
     write_module.get_ecu_connection = lambda: connection
-    screen = IgnitionTuningScreen(close_fn=Mock(), state=IgnitionMapState(max_map_kpa=70, ceiling=50),
-                                  analysis=IgnitionAnalysis(2900, 3100, 5, 5, 20), clock=lambda: clock[0])
+    screen = make_screen(clock, tmp_path, [5])
     screen._players = {name: Mock() for name in screen._players}
     screen._writer._player = Mock()
     screen.on_activated()
@@ -134,7 +168,7 @@ def test_footer_lists_the_keys(env):
     """Scenario: Footer hints."""
     hint = env.screen.hint_label.text()
 
-    for key in ("↑", "↓", "Espaço", "X", "R", "ESC"):
+    for key in ("↑", "↓", "←→", "Espaço", "X", "R", "ESC"):
         assert key in hint
 
 
@@ -228,7 +262,7 @@ def test_column_shows_the_scenario(env):
     column = [c for c in env.columns() if c.offset == 1][0]
     labels = {name: label.text() for name, label in column.labels.items()}
     assert labels["header"] == "+1°"
-    assert labels["band"] == "2900-3100"
+    assert "band" not in labels
     assert labels["time"] == "00:39"
     assert labels["inj"] == "1.08 ms"
     assert labels["map"] == "46.0 kPa"
@@ -374,7 +408,7 @@ def test_reset_restores_everything_and_writes_all_rows(env):
     env.press(Qt.Key.Key_R)
 
     assert env.state.offset == 0
-    assert env.screen._analysis.scenarios() == []
+    assert env.screen._analysis.scenarios(5) == []
     assert not env.screen._analysis.paused
     assert env.screen._writer._timer.isActive()
     env.write_now()
@@ -462,25 +496,25 @@ def test_state_is_kept_while_the_screen_is_hidden(env):
     env.settle()
     env.go_to(+2)
     env.feed(3.0)
-    before = [(s.offset, s.samples) for s in env.screen._analysis.scenarios()]
+    before = [(s.offset, s.samples) for s in env.screen._analysis.scenarios(5)]
 
     env.screen.on_deactivated()
     env.screen.on_activated()
 
     assert env.state.offset == 2
-    assert [(s.offset, s.samples) for s in env.screen._analysis.scenarios()] == before
+    assert [(s.offset, s.samples) for s in env.screen._analysis.scenarios(5)] == before
 
 
 def test_telemetry_is_not_analysed_while_hidden(env):
     """Scenario: Hidden."""
     env.settle()
     env.feed(2.0)
-    before = env.screen._analysis.scenarios()[0].samples
+    before = env.screen._analysis.scenarios(5)[0].samples
     env.screen.on_deactivated()
 
     env.feed(10.0)
 
-    assert env.screen._analysis.scenarios()[0].samples == before
+    assert env.screen._analysis.scenarios(5)[0].samples == before
 
 
 def test_refresh_runs_every_100_ms_while_active_and_stops_when_hidden(env):
@@ -561,14 +595,14 @@ def test_the_analysis_starts_settling_when_the_write_runs(env):
     env.settle()
     env.press(Qt.Key.Key_Up)
     env.feed(3.0)  # still waiting for the write
-    assert env.screen._analysis.scenarios() == []
+    assert env.screen._analysis.scenarios(5) == []
 
     env.write_now()
     env.feed(4.5)
-    assert env.screen._analysis.scenarios() == []
+    assert env.screen._analysis.scenarios(5) == []
 
     env.feed(1.0)
-    assert env.screen._analysis.scenarios()[0].offset == 1
+    assert env.screen._analysis.scenarios(5)[0].offset == 1
 
 
 # ---------------------------------------------------------------------------- sounds
@@ -632,3 +666,305 @@ def test_the_write_beep_is_muted_while_the_screen_is_hidden(env):
     env.screen.on_activated()
 
     assert not env.screen._writer._audio_output.isMuted()
+
+
+# ------------------------------------------------- several gears (ignition-multi-gear)
+
+def temperatures(clt_raw, iat_raw):
+    """Publish a frame with the given raw CLT and IAT (both are the value plus 273)."""
+    processor = SignalProcessor()
+    received = []
+    processor.emitter.connect(received.append)
+    processor.process_line(frame_with({19: clt_raw, 20: iat_raw}))
+    vehicle_state.update(received[0])
+
+
+def eligible_in(env, gear, pulse, seconds=21.0):
+    env.feed(seconds, gear=gear, pulse=pulse)
+
+
+def test_the_second_line_shows_coolant_and_intake_temperature(env):
+    """Scenario: Coolant and intake temperature."""
+    temperatures(360, 314)
+    env.screen._refresh()
+
+    cards = env.screen._second_line_cards
+    assert (cards[Signal.CLT].big_label.text(), cards[Signal.IAT].big_label.text()) == ("87", "41")
+
+
+def test_temperatures_never_received_show_dashes(env):
+    """Scenario: Temperatures never received."""
+    env.screen._refresh()
+
+    assert [c.big_label.text() for c in env.screen._second_line_cards.values()] == ["--", "--"]
+
+
+def test_the_second_line_shows_the_analysed_rpm_band(env):
+    """Scenario: Analysed RPM band."""
+    env.screen._refresh()
+
+    assert env.screen.band_label.text() == "Faixa 2900-3100"
+
+
+def test_the_gear_indicator_marks_the_shown_gear_and_the_gears_with_data(two_gears):
+    """Scenario: Gear indicator."""
+    two_gears.screen._refresh()
+    assert two_gears.screen.gear_label.text() == "4ª  [5ª]"
+
+    two_gears.settle()
+    two_gears.feed(2.0, gear=4)
+    two_gears.press(Qt.Key.Key_Right)
+
+    assert two_gears.screen.gear_label.text() == "4ª•  [5ª]"
+
+
+def test_the_shown_gear_has_the_dot_inside_the_brackets(two_gears):
+    """Scenario: Shown gear with data."""
+    two_gears.settle()
+    two_gears.feed(2.0, gear=5)
+    two_gears.feed(2.0, gear=4)
+    two_gears.press(Qt.Key.Key_Right)
+
+    assert two_gears.screen.gear_label.text() == "4ª•  [5ª•]"
+
+
+def test_a_single_configured_gear_is_still_shown(env):
+    """Scenario: Single configured gear."""
+    env.screen._refresh()
+
+    assert env.screen.gear_label.text() == "[5ª]"
+
+
+def test_the_columns_show_only_the_shown_gear(two_gears):
+    """Scenario: Only the shown gear."""
+    two_gears.settle()
+    two_gears.feed(2.0, gear=4)
+    two_gears.go_to(+1, gear=4)
+    two_gears.feed(2.0, gear=4)
+    two_gears.feed(2.0, gear=5)  # offset +1 in gear 5; gear 5 is shown now
+    two_gears.screen._refresh()
+
+    assert [c.offset for c in two_gears.columns()] == [1]
+
+
+def test_a_gear_without_scenarios_shows_the_empty_message(two_gears):
+    """Scenario: Empty gear."""
+    two_gears.settle()
+    two_gears.feed(2.0, gear=4)
+    two_gears.press(Qt.Key.Key_Right)
+
+    assert two_gears.screen._shown_gear == 5
+    assert two_gears.columns() == []
+    assert not two_gears.screen.empty_label.isHidden()
+
+
+def test_the_best_border_belongs_to_the_shown_gear(two_gears):
+    """Scenario: Best of the other gear."""
+    two_gears.settle()
+    eligible_in(two_gears, 4, 120)
+    two_gears.go_to(+1, gear=4, pulse=118)
+    eligible_in(two_gears, 4, 118)
+    two_gears.press(Qt.Key.Key_Left)  # nothing: already on the lowest gear
+    two_gears.feed(1.0, gear=5, pulse=108)
+    two_gears.screen._refresh()
+
+    assert two_gears.screen._shown_gear == 5
+    assert [c.is_best for c in two_gears.columns()] == [False]
+    two_gears.press(Qt.Key.Key_Left)
+    assert [c.is_best for c in two_gears.columns()] == [False, True]
+
+
+def test_the_initial_shown_gear_is_the_highest_configured_one(two_gears):
+    """Scenario: Initial gear."""
+    assert two_gears.screen._shown_gear == 5
+
+
+def test_the_shown_gear_follows_the_engaged_gear(two_gears):
+    """Scenario: Follows the engaged gear."""
+    two_gears.settle()
+    two_gears.feed(1.0, gear=5)
+
+    two_gears.feed(1.0, gear=4)
+
+    assert two_gears.screen._shown_gear == 4
+
+
+@pytest.mark.parametrize("gear", [3, 0])
+def test_a_gear_that_is_not_configured_keeps_the_shown_gear(two_gears, gear):
+    """Scenario: Not a configured gear."""
+    two_gears.settle()
+    two_gears.feed(1.0, gear=4)
+
+    two_gears.feed(1.0, gear=gear)
+
+    assert two_gears.screen._shown_gear == 4
+
+
+def test_left_and_right_change_the_shown_gear_only(two_gears):
+    """Scenario: Manual change."""
+    two_gears.settle()
+    two_gears.go_to(+1)
+    two_gears.feed(2.0, gear=5)
+    before = [(s.offset, s.samples) for s in two_gears.screen._analysis.scenarios(5)]
+    two_gears.screen._writer._timer.stop()  # the helper only simulated the 1 s delay elapsing
+    two_gears.connection.sent.clear()
+
+    two_gears.press(Qt.Key.Key_Left)
+
+    assert two_gears.screen._shown_gear == 4
+    assert two_gears.state.offset == 1
+    assert [(s.offset, s.samples) for s in two_gears.screen._analysis.scenarios(5)] == before
+    assert not two_gears.screen._writer._timer.isActive()
+    assert two_gears.connection.sent == []
+
+
+def test_a_manual_choice_lasts_until_the_engaged_gear_changes(two_gears):
+    """Scenario: Manual choice kept."""
+    two_gears.settle()
+    two_gears.feed(1.0, gear=5)
+    two_gears.press(Qt.Key.Key_Left)
+
+    two_gears.feed(3.0, gear=5)
+    assert two_gears.screen._shown_gear == 4
+
+    two_gears.feed(1.0, gear=4)
+    two_gears.feed(1.0, gear=5)
+    assert two_gears.screen._shown_gear == 5
+
+
+def test_the_gear_list_does_not_wrap(two_gears):
+    """Scenario: End of the list."""
+    two_gears.press(Qt.Key.Key_Right)
+    assert two_gears.screen._shown_gear == 5
+
+    two_gears.press(Qt.Key.Key_Left)
+    two_gears.press(Qt.Key.Key_Left)
+    assert two_gears.screen._shown_gear == 4
+
+
+def test_left_and_right_do_nothing_with_a_single_gear(env):
+    """Scenario: Single gear."""
+    env.press(Qt.Key.Key_Left)
+    env.press(Qt.Key.Key_Right)
+
+    assert env.screen._shown_gear == 5
+
+
+def test_a_held_arrow_acts_once(two_gears):
+    two_gears.press(Qt.Key.Key_Left, auto_repeat=True)
+
+    assert two_gears.screen._shown_gear == 5
+
+
+def test_sampling_goes_on_in_the_engaged_gear_while_another_is_shown(two_gears):
+    """Scenario: Sampling is independent of the display."""
+    two_gears.settle()
+    two_gears.feed(2.0, gear=4)
+    two_gears.feed(1.0, gear=5)
+    two_gears.press(Qt.Key.Key_Left)
+    two_gears.screen._refresh()
+    shown_time = two_gears.texts(0, "time")
+    samples = two_gears.screen._analysis.scenarios(5)[0].samples
+
+    two_gears.feed(6.0, gear=5)
+
+    assert two_gears.screen._analysis.scenarios(5)[0].samples > samples
+    assert two_gears.texts(0, "time") == shown_time
+
+
+def test_x_discards_only_in_the_shown_gear(two_gears):
+    """Scenario: Discard only in the shown gear."""
+    two_gears.settle()
+    eligible_in(two_gears, 5, 112)
+    two_gears.go_to(+1, gear=5, pulse=110)
+    eligible_in(two_gears, 5, 110)
+    two_gears.go_to(+2, gear=5, pulse=108)
+    eligible_in(two_gears, 5, 108)
+    eligible_in(two_gears, 4, 130)  # gear 4 at +2: shown while engaged
+    two_gears.press(Qt.Key.Key_Right)
+    assert two_gears.screen._shown_gear == 5
+
+    two_gears.press(Qt.Key.Key_X)
+
+    assert [s.offset for s in two_gears.screen._analysis.scenarios(5)] == [1, 2]
+    assert [s.offset for s in two_gears.screen._analysis.scenarios(4)] == [2]
+
+
+def test_reset_clears_the_scenarios_of_every_gear(two_gears):
+    """Scenario: Reset."""
+    two_gears.settle()
+    two_gears.go_to(+3)
+    two_gears.feed(2.0, gear=5)
+    two_gears.feed(2.0, gear=4)
+
+    two_gears.press(Qt.Key.Key_R)
+
+    assert two_gears.state.offset == 0
+    assert two_gears.screen._analysis.gears_with_data() == []
+    two_gears.screen._refresh()
+    assert two_gears.columns() == []
+
+
+# -------------------------------------------------------------------- results file
+
+def result_files(env):
+    return sorted(f for f in os.listdir(env.results_dir) if f.startswith("ignition_results_"))
+
+
+def result_rows(env, name):
+    with open(os.path.join(env.results_dir, name), newline="") as f:
+        return list(csv.reader(f, delimiter=";"))[1:]
+
+
+def test_an_accepted_sample_creates_the_results_file(env):
+    env.settle()
+    assert result_files(env) == []
+
+    env.feed(1.0)
+
+    assert len(result_files(env)) == 1
+
+
+def test_leaving_the_screen_writes_the_pending_results(env):
+    env.settle()
+    env.feed(3.0)  # the first sample wrote the file; the rest is inside the interval
+
+    env.screen.on_deactivated()
+
+    [name] = result_files(env)
+    assert result_rows(env, name)[0][5] == "6"
+
+
+def test_a_reset_closes_the_file_and_the_next_run_opens_another(env):
+    env.settle()
+    env.feed(3.0)
+
+    env.press(Qt.Key.Key_R)
+    env.write_now()
+    env.settle()
+    env.feed(1.0)
+
+    names = result_files(env)
+    assert len(names) == 2
+    assert result_rows(env, names[0])[0][5] == "6"
+
+
+def test_a_discarded_scenario_stays_in_the_file(env):
+    three_eligible_scenarios(env)
+
+    env.press(Qt.Key.Key_X)
+    env.screen.on_deactivated()
+
+    [name] = result_files(env)
+    assert [(row[1], row[17]) for row in result_rows(env, name)] == [("0", "1"), ("1", "0"), ("2", "0")]
+
+
+def test_an_unusable_results_directory_does_not_stop_the_analysis(env, tmp_path):
+    env.screen._results._directory = str(tmp_path / "missing")
+    env.settle()
+
+    env.feed(3.0)
+    env.screen.on_deactivated()
+
+    assert env.screen._analysis.scenarios(5)[0].samples == 6
+    assert result_files(env) == []

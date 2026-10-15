@@ -43,7 +43,7 @@ class AppConfigIgnitionTuning:
     def __init__(self, config_dict: dict):
         self.rpm_min: int = config_dict.get('rpm_min', 2900)
         self.rpm_max: int = config_dict.get('rpm_max', 3100)
-        self.gear: int = config_dict.get('gear', 5)
+        self.gears: list[int] = self._gears(config_dict.get('gears'))
         self.max_map_kpa: int = config_dict.get('max_map_kpa', 70)
         self.max_ignition: int = config_dict.get('max_ignition', 50)
         self.settle_seconds: float = config_dict.get('settle_seconds', 5)
@@ -53,6 +53,13 @@ class AppConfigIgnitionTuning:
         self.pause_sound: str = config_dict.get('pause_sound', 'alarm.wav')
         self.resume_sound: str = config_dict.get('resume_sound', 'alarm.wav')
         self.discard_sound: str = config_dict.get('discard_sound', 'alarm.wav')
+
+    @staticmethod
+    def _gears(value) -> list[int]:
+        """A non-empty list of integers; anything else takes the default [5]."""
+        if isinstance(value, list) and value and all(isinstance(g, int) and not isinstance(g, bool) for g in value):
+            return list(value)
+        return [5]
 
 
 class AppConfigConnection:

@@ -1,3 +1,5 @@
+import logging
+
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QWidget, QStackedWidget
 
@@ -8,6 +10,8 @@ from app.ui.dashboard.screen import DashboardScreen
 from app.ui.home.screen import HomeScreen
 from app.ui.ignition_tuning.screen import IgnitionTuningScreen
 from app.ui.ve_calibration.screen import VeCalibrationScreen
+
+logger = logging.getLogger(__name__)
 
 
 class AppWindow(QWidget):
@@ -72,6 +76,14 @@ class AppWindow(QWidget):
     def on_connection_error(self, message: str):
         """Show a connection error over the current screen for a couple of seconds."""
         self._error_overlay.show_message(message)
+
+    def closeEvent(self, event):
+        """Write the pending ignition results before the window goes away (closing twice is harmless)."""
+        try:
+            self._screens["ignition_tuning"].flush_results()
+        except Exception:
+            logger.exception("Could not write the ignition results")
+        super().closeEvent(event)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
