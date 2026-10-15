@@ -88,3 +88,79 @@ def test_the_datalog_is_closed_last_so_it_keeps_the_frames_that_arrived(parts):
 
     assert calls[-1] == "datalog"
     assert calls.index("ecu") < calls.index("datalog")
+
+
+# ── Inclinometer connection (change gyro-inclination) ────────────────────────────────────────────────────
+
+def test_the_inclinometer_is_stopped_right_after_the_ecu_source(parts):
+    """Spec: Inclinometer connection stops on shutdown (order)."""
+    calls, components = parts
+
+    shutdown(**components, gyro=Component("gyro", calls, "stop"))
+
+    assert calls == ["window", "ecu", "gyro", "alarm", "datalog"]
+
+
+def test_the_inclinometer_port_is_closed_on_exit():
+    """Scenario: Port closed."""
+    from tests.test_gyro_connection import Ports
+    from app.gyro.connection import GyroConnection
+
+    ports = Ports("COM7")
+    gyro = GyroConnection("COM7", serial_factory=ports, idle_wait=0.01)
+    gyro.start()
+    import time
+    deadline = time.monotonic() + 2
+    while not gyro.is_open() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert gyro.is_open()
+
+    shutdown(None, None, None, None, gyro=gyro)
+
+    assert ports.last.closed
+    assert not gyro._thread.is_alive()
+
+
+def test_shutdown_without_a_configured_inclinometer_completes(parts):
+    """Scenario: Not configured."""
+    from app.gyro.connection import GyroConnection
+
+    calls, components = parts
+
+    shutdown(**components, gyro=GyroConnection(""))
+
+    assert calls == ["window", "ecu", "alarm", "datalog"]
+
+
+def test_shutdown_without_an_inclinometer_at_all_completes(parts):
+    calls, components = parts
+
+    shutdown(**components, gyro=None)
+
+    assert calls == ["window", "ecu", "alarm", "datalog"]
+
+
+def test_a_failing_inclinometer_stop_is_logged_and_the_rest_still_stop(parts, caplog):
+    """Scenario: Stop fails."""
+    calls, components = parts
+
+    with caplog.at_level(logging.ERROR):
+        shutdown(**components, gyro=Component("gyro", calls, "stop", fail=True))
+
+    assert calls == ["window", "ecu", "gyro", "alarm", "datalog"]
+    assert any("inclinometer" in record.getMessage().lower() for record in caplog.records)
+
+
+def test_an_inclinometer_thread_that_does_not_finish_in_time_only_warns(caplog):
+    """Spec: waiting for it is bounded; on timeout the app logs a warning and continues."""
+    from unittest.mock import Mock
+    from app.gyro.connection import GyroConnection
+
+    gyro = GyroConnection("")
+    gyro._thread = Mock(is_alive=Mock(return_value=True), join=Mock())
+
+    with caplog.at_level(logging.WARNING):
+        shutdown(None, None, None, None, gyro=gyro)
+
+    gyro._thread.join.assert_called_once_with(1.0)
+    assert any("did not finish" in record.getMessage() for record in caplog.records)

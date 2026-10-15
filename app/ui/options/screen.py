@@ -52,7 +52,7 @@ class OptionsScreen(Screen):
         layout.setSpacing(40)
         layout.addStretch()
 
-        title = QLabel("Opções")
+        title = QLabel("ECU")
         title_font = QFont("Arial", 48)
         title_font.setBold(True)
         title.setFont(title_font)

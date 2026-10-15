@@ -13,6 +13,7 @@ from app.ecu_connection import register_ecu_connection, get_ecu_connection, get_
 from app.ecu_connection.mock_log import EcuConnectionMock
 from app.ecu_connection.serial import EcuConnectionSerial
 from app.event.marker import EventMarker
+from app.gyro import GyroConnection, get_gyro, register_gyro
 from app.lifecycle import shutdown
 from app.log_writer.log_writer import LogWriter
 from app.logger import setup_logging
@@ -49,6 +50,9 @@ def main():
     else:
         register_ecu_connection(EcuConnectionSerial(config.connection.port, config.connection.baudrate))
 
+    # The optional inclinometer: registered before the window, because the screens look it up when they are built.
+    register_gyro(GyroConnection(config.gyro.port))
+
     app_window = AppWindow(signal_processor)
     app_window.show()
 
@@ -63,11 +67,12 @@ def main():
     get_ecu_connection().emitter.connect(app_window.on_ecu_line)
     get_ecu_connection().emitter.connect(log_writer.write)
     get_ecu_connection_thread().start()
+    get_gyro().start()
 
     try:
         app.exec()
     finally:
-        shutdown(app_window, get_ecu_connection_thread(), alarm_processor, log_writer)
+        shutdown(app_window, get_ecu_connection_thread(), alarm_processor, log_writer, gyro=get_gyro())
 
 
 if __name__ == "__main__":

@@ -8,6 +8,8 @@ import pytest
 from PyQt6.QtCore import Qt
 
 import app.ui.ignition_tuning.ignition_write_controller as write_module
+from app.config import config
+from app.gyro.state import GyroSnapshot, GyroStatus
 from app.masterinjection.protocol import EcuCommand
 from app.masterinjection.signal import Signal
 from app.masterinjection.signal_processor import SignalProcessor
@@ -84,7 +86,7 @@ class Env:
         return self.columns()[column_index].labels[name].text()
 
 
-def make_screen(clock, tmp_path, gears, state=None):
+def make_screen(clock, tmp_path, gears, state=None, gyro=None):
     """A screen whose results go to `tmp_path` and whose clock is `clock[0]`."""
     state = IgnitionMapState(max_map_kpa=70, ceiling=50) if state is None else state
     analysis = IgnitionAnalysis(rpm_min=2900, rpm_max=3100, gears=gears, settle_seconds=5, min_scenario_seconds=20)
@@ -92,7 +94,7 @@ def make_screen(clock, tmp_path, gears, state=None):
     results = IgnitionResultsLog(analysis, directory=str(tmp_path), clock=lambda: clock[0],
                                  wall_clock=lambda: wall + timedelta(seconds=clock[0]))
     return IgnitionTuningScreen(close_fn=Mock(), state=state, analysis=analysis, clock=lambda: clock[0],
-                                results=results)
+                                results=results, gyro=gyro)
 
 
 @pytest.fixture
@@ -168,7 +170,7 @@ def test_footer_lists_the_keys(env):
     """Scenario: Footer hints."""
     hint = env.screen.hint_label.text()
 
-    for key in ("↑", "↓", "←→", "Espaço", "X", "R", "ESC"):
+    for key in ("↑", "↓", "←→", "Espaço", "X", "R", "G", "ESC"):
         assert key in hint
 
 
@@ -968,3 +970,263 @@ def test_an_unusable_results_directory_does_not_stop_the_analysis(env, tmp_path)
 
     assert env.screen._analysis.scenarios(5)[0].samples == 6
     assert result_files(env) == []
+
+
+# ------------------------------------------------------------------ inclinometer (gyro-inclination)
+
+class FakeGyro:
+    """The inclinometer as the screen sees it."""
+
+    def __init__(self, status=GyroStatus.DISABLED, pitch=None):
+        self.status = status
+        self.pitch = pitch
+        self.zero_calls = 0
+
+    def snapshot(self):
+        return GyroSnapshot(self.status, self.pitch if self.status is GyroStatus.USABLE else None, None, "")
+
+    def zero(self):
+        self.zero_calls += 1
+        return self.status not in (GyroStatus.DISABLED, GyroStatus.DISCONNECTED)
+
+    def use(self, pitch):
+        self.status, self.pitch = GyroStatus.USABLE, pitch
+
+
+@pytest.fixture
+def tilt_env(qapp, tmp_path):
+    """The screen with a configured inclinometer (usable, level) and a settled analysis."""
+    connection = RecordingConnection()
+    clock = [100.0]
+    gyro = FakeGyro(GyroStatus.USABLE, 0.5)
+    write_module_original = write_module.get_ecu_connection
+    write_module.get_ecu_connection = lambda: connection
+    screen = make_screen(clock, tmp_path, [5], gyro=gyro)
+    screen._players = {name: Mock() for name in screen._players}
+    screen._writer._player = Mock()
+    vehicle_state.set_map_breakpoints(MAP_AXIS)
+    for row in range(16):
+        vehicle_state.set_ignition_row(base_row(row), row)
+    screen.on_activated()
+    environment = Env(screen, connection, clock, tmp_path)
+    environment.gyro = gyro
+    yield environment
+    screen.on_deactivated()
+    write_module.get_ecu_connection = write_module_original
+
+
+def box(env):
+    env.screen._refresh()
+    label = env.screen.inclination_label
+    return label.text(), label.styleSheet()
+
+
+@pytest.mark.parametrize("pitch, text, color", [
+    (1.37, "Inclinação: +1.4° ↓", "#2ECC71"),       # Scenario: Nose down
+    (-2.04, "Inclinação: -2.0° ↑", "#2ECC71"),      # Scenario: Nose up
+    (0.02, "Inclinação: 0.0°", "#2ECC71"),          # Scenario: Flat
+    (-0.04, "Inclinação: 0.0°", "#2ECC71"),
+    (4.5, "Inclinação: +4.5° ↓", "#E74C3C"),        # Scenario: Above the limit
+    (-4.5, "Inclinação: -4.5° ↑", "#E74C3C"),
+    (3.0, "Inclinação: +3.0° ↓", "#2ECC71"),
+])
+def test_inclination_box_when_usable(tilt_env, pitch, text, color):
+    """Spec: Inclination box (nose down, nose up, flat, above the limit)."""
+    tilt_env.gyro.use(pitch)
+
+    shown, style = box(tilt_env)
+
+    assert shown == text
+    assert color in style
+
+
+@pytest.mark.parametrize("status, text, color", [
+    (GyroStatus.NOT_ZEROED, "Inclinação: sem zero (G)", "#FF8800"),     # Scenario: Not zeroed
+    (GyroStatus.NO_SIGNAL, "Inclinação: sem sinal", "#FF8800"),         # Scenario: No signal
+    (GyroStatus.DISCONNECTED, "Inclinação: desconectada", "#FF8800"),   # Scenario: Disconnected
+    (GyroStatus.CALIBRATING, "Inclinação: calibrando…", "#FF8800"),     # Scenario: Calibrating
+    (GyroStatus.DISABLED, "Inclinação: desligada", "#777777"),          # Scenario: Disabled
+])
+def test_inclination_box_when_not_usable(tilt_env, status, text, color):
+    tilt_env.gyro.status = status
+
+    shown, style = box(tilt_env)
+
+    assert shown == text
+    assert color in style
+
+
+def test_inclination_box_follows_the_configured_limit(tilt_env):
+    tilt_env.gyro.use(4.5)
+    config.ignition_tuning.max_tilt_deg = 5
+    tilt_env.screen.on_setting_changed("ignition_tuning", "max_tilt_deg")
+
+    assert "#2ECC71" in box(tilt_env)[1]
+
+
+def status(env):
+    env.screen._refresh()
+    return env.screen.status_label.text()
+
+
+def test_status_waits_for_the_sensor(tilt_env):
+    """Scenario: Waiting for the sensor."""
+    tilt_env.gyro.status = GyroStatus.NOT_ZEROED
+
+    assert status(tilt_env) == "AGUARDANDO SENSOR"
+
+
+def test_the_sensor_has_priority_over_the_band(tilt_env):
+    """Scenario: Sensor has priority over the band."""
+    tilt_env.gyro.status = GyroStatus.DISCONNECTED
+    tilt_env.publish(rpm=3400)
+
+    assert status(tilt_env) == "AGUARDANDO SENSOR"
+
+
+def test_status_is_tilted_above_the_limit(tilt_env):
+    """Scenario: Tilted."""
+    tilt_env.gyro.use(4.5)
+
+    assert status(tilt_env) == "INCLINADO"
+
+
+def test_status_settles_and_then_analyses_after_the_car_is_level(tilt_env):
+    """Scenario: Settling after the inclination is level."""
+    tilt_env.gyro.use(4.5)
+    tilt_env.feed(1.0)
+    tilt_env.gyro.use(1.0)
+    tilt_env.publish()
+
+    assert status(tilt_env) == "ESTABILIZANDO"
+    tilt_env.feed(5.5)
+    assert status(tilt_env) == "ANALISANDO"
+
+
+def test_status_never_shows_the_sensor_states_without_a_configured_sensor(env):
+    """Scenario: No sensor configured."""
+    env.settle()
+    env.feed(1.0)
+    env.screen._refresh()
+
+    assert env.screen.status_label.text() == "ANALISANDO"
+    assert env.screen.inclination_label.text() == "Inclinação: desligada"
+
+
+def test_a_tilted_car_is_not_analysed(tilt_env):
+    tilt_env.gyro.use(5.0)
+    tilt_env.feed(8.0)
+
+    assert tilt_env.screen._analysis.gears_with_data() == []
+
+
+def test_a_level_car_is_analysed(tilt_env):
+    tilt_env.feed(8.0)
+    tilt_env.feed(2.0)
+
+    assert tilt_env.screen._analysis.gears_with_data() == [5]
+
+
+def test_g_zeroes_the_inclinometer_and_changes_nothing_else(tilt_env):
+    """Scenario: Zero the inclination."""
+    tilt_env.settle()
+    tilt_env.feed(1.0)
+    offset, paused = tilt_env.state.offset, tilt_env.screen._analysis.paused
+    revision = tilt_env.screen._analysis.revision
+
+    tilt_env.press(Qt.Key.Key_G)
+
+    assert tilt_env.gyro.zero_calls == 1
+    assert (tilt_env.state.offset, tilt_env.screen._analysis.paused) == (offset, paused)
+    assert tilt_env.screen._analysis.revision == revision
+    assert tilt_env.connection.sent == []
+
+
+def test_g_is_ignored_when_held(tilt_env):
+    tilt_env.press(Qt.Key.Key_G, auto_repeat=True)
+
+    assert tilt_env.gyro.zero_calls == 0
+
+
+def test_g_without_a_sensor_sends_nothing_and_changes_nothing(env):
+    """Scenario: Zero without a sensor. The default inclinometer is disabled, so it drops the command."""
+    env.settle()
+    offset = env.state.offset
+
+    env.press(Qt.Key.Key_G)
+
+    assert env.state.offset == offset
+    assert env.connection.sent == []
+    assert env.screen._gyro.zero() is False
+
+
+# -- settings changed on the Settings screen
+
+def test_a_new_rpm_band_writes_the_previous_run_with_its_own_band_and_starts_a_new_file(tilt_env):
+    """Spec: a change of the RPM band ends the results of the run, written with the old band."""
+    tilt_env.feed(8.0)
+    tilt_env.feed(2.0)
+    assert tilt_env.screen._analysis.gears_with_data() == [5]
+
+    config.ignition_tuning.rpm_max = 3200
+    tilt_env.screen.on_setting_changed("ignition_tuning", "rpm_max")
+
+    first = result_files(tilt_env)
+    assert len(first) == 1
+    assert {row[3] for row in result_rows(tilt_env, first[0])} == {"3100"}
+    assert tilt_env.screen._analysis.gears_with_data() == []
+    assert tilt_env.screen._analysis.rpm_max == 3200
+
+    tilt_env.feed(1.0, rpm=3150)
+    files = result_files(tilt_env)
+    assert len(files) == 2
+    assert {row[3] for row in result_rows(tilt_env, files[1])} == {"3200"}
+
+
+def test_another_ignition_setting_keeps_the_scenarios_and_the_run(tilt_env):
+    tilt_env.feed(8.0)
+    tilt_env.feed(2.0)
+    config.ignition_tuning.settle_seconds = 8
+
+    tilt_env.screen.on_setting_changed("ignition_tuning", "settle_seconds")
+
+    assert tilt_env.screen._analysis.gears_with_data() == [5]
+    assert tilt_env.screen._analysis.settle_seconds == 8
+
+
+def test_settings_of_other_sections_are_ignored(tilt_env):
+    tilt_env.feed(8.0)
+    tilt_env.feed(2.0)
+    config.ignition_tuning.rpm_max = 3200  # changed behind the screen's back
+
+    tilt_env.screen.on_setting_changed("gyro", "port")
+
+    assert tilt_env.screen._analysis.rpm_max == 3100
+    assert tilt_env.screen._analysis.gears_with_data() == [5]
+
+
+def test_both_top_bar_lines_share_columns_and_the_box_sits_right_of_the_temperatures(tilt_env):
+    """Spec: Top bar (second line order and column widths) and Inclination box (position)."""
+    screen = tilt_env.screen
+    screen.resize(1920, 1080)
+    screen.show()
+    screen._refresh()
+    cards = screen._top_bar_cards
+    clt, iat = (screen._second_line_cards[signal] for signal in screen._second_line_cards)
+    rpm, pedal = cards[Signal.RPM], cards[Signal.PEDAL]
+
+    assert abs(clt.width() - rpm.width()) <= 2 and abs(iat.width() - pedal.width()) <= 2
+    def left(widget):
+        return widget.mapTo(screen, widget.rect().topLeft()).x()
+
+    def right(widget):
+        return widget.mapTo(screen, widget.rect().topRight()).x()
+
+    def top(widget):
+        return widget.mapTo(screen, widget.rect().topLeft()).y()
+
+    box = screen.inclination_label
+    assert left(clt) < left(iat) < left(box) < left(screen.gear_label) < left(screen.band_label)
+    assert right(iat) <= left(box) and right(box) <= left(screen.gear_label)
+    assert top(box) > top(rpm)  # on the second line
+    screen.hide()

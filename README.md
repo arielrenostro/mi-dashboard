@@ -19,8 +19,10 @@ A real-time telemetry dashboard for the Master Injection ECU. Streams sensor dat
 - **Lambda loop control** — open and close the lambda loop from the VE calibration screen with a keystroke; plays a configurable sound on each command
 - **CSV logging** — one file per run; appends every ECU frame with a millisecond Unix timestamp and an optional event label
 - **Ignition tuning** — on-road search for the best spark advance at light load: one global advance offset (±1° per key press) applied to the ignition rows up to a MAP limit, with one column per offset comparing injection time, MAP and pedal at the same RPM and gear
-- **Options screen** — change the engine phase (Negativa / Positiva) from the car: the app reads the ECU `#X02` block, replaces only the phase value and writes it back one second after the last change, without saving it to the ECU memory
-- **Global shortcuts** — **F1** Dashboard, **F2** VE calibration, **F3** Ignition tuning, **F4** Options, from any screen
+- **ECU screen** — change the engine phase (Negativa / Positiva) from the car: the app reads the ECU `#X02` block, replaces only the phase value and writes it back one second after the last change, without saving it to the ECU memory
+- **Inclinometer (optional)** — a serial device (Arduino + MPU-6500, 115200 8N1) reports the pitch of the car. When its port is configured, the ignition analysis only samples while the car is level (`|pitch| <= ignition_tuning.max_tilt_deg`), shows the inclination in a box at the top and waits `settle_seconds` after the car is level again
+- **Settings screen** — edit settings of `config.json` from the keyboard (saved at once) and connect, zero and recalibrate the inclinometer
+- **Global shortcuts** — **F1** Dashboard, **F2** VE calibration, **F3** Ignition tuning, **F4** ECU, **F12** Settings, from any screen
 - **Manual event marking** — press **Enter** on the Dashboard, the VE calibration screen or the ignition tuning screen to beep and stamp `MARK` on the next CSV row
 - **Automatic reconnection** — detects dropped Bluetooth connections and reconnects without restarting the app, retrying once per second
 - **Connection error alerts** — a square, dialog-like overlay shows the failure (port, error detail) for 2 seconds on whatever screen is active, without taking the keyboard; the same error is not repeated while it persists
@@ -38,7 +40,17 @@ Built for the road: hold a steady RPM in a fixed gear, raise the advance 1° at 
 
 ![Ignition tuning screen](assets/ignition_tuning.png)
 
-*Ignition tuning screenshot with illustrative data (six offsets, 0° to +5°, best result at +4°), not a real tuning session.*
+*Ignition tuning screenshot with illustrative data (two gears, six offsets from 0° to +5°, best result at +4°, inclinometer zeroed at +0.6°), not a real tuning session. Top bar, first line: RPM, MAP, pedal, gear, ignition and lambda, with the offset and the status on the right. Second line: coolant and intake temperature, the inclination box, the gear indicator and the analysed RPM band.*
+
+### Inclinometer (optional)
+
+A slope changes the load the engine needs, so samples taken uphill or downhill are not comparable with samples taken on the flat. An optional inclinometer (an Arduino with an MPU-6500, serial 115200 8N1, 100 Hz) tells the ignition tuning screen when the car is not level.
+
+- **Enable it** — set `gyro.port` (for example `"COM7"`) in `config.json`, or pick the port on the Settings screen (**F12**); `Nenhuma` turns it off. The app connects by itself and retries every 2 seconds while the port is missing; the connection never touches the ECU connection and never shows the error overlay.
+- **It is required once configured** — with a port set, the ignition analysis only samples while the inclinometer is usable (connected, sending, not calibrating and zeroed) and `|pitch| <= ignition_tuning.max_tilt_deg` (default `3`°). Otherwise the status reads `AGUARDANDO SENSOR` (not usable) or `INCLINADO` (above the limit). When the car is level again the samples are discarded for `ignition_tuning.settle_seconds`, like after a write. With no port configured nothing changes.
+- **Zero it yourself** — on a flat stretch press **G** on the ignition tuning screen (or **Zerar inclinação** on the Settings screen). The app sends `#Z` and trusts the device's answer (`#M;Zero definido;`); it never zeroes by itself, and the inclination is not used again until you zero it after the app starts, after the device restarts or reconnects, and after a recalibration. **Recalibrar giroscópio** (`#C`) is only sent with the car stopped.
+- **The box** — `Inclinação: +1.4° ↓` (positive pitch = nose down, `↑` = nose up) in green within the limit and red above it; orange while it is configured but not usable (`sem zero (G)`, `sem sinal`, `desconectada`, `calibrando…`); gray `desligada` when there is no inclinometer.
+- **Protocol** — lines end with `;` and start with `#D` (data: `t_ms;pitch;roll;ax_g;ay_g;az_g;gx_dps;gy_dps;gz_dps;temp_c`), `#H` (header, once after the device starts) or `#M` (a text message). Only the pitch takes part in the decision; the roll, temperature and the latest message are shown on the Settings screen. The angles are already filtered and zeroed by the device.
 
 ---
 
@@ -119,10 +131,16 @@ Settings are loaded from `config.json` in the working directory or from the file
     "rpm_min": 2900,
     "rpm_max": 3100,
     "gears": [4, 5],
-    "max_map_kpa": 70
+    "max_map_kpa": 70,
+    "max_tilt_deg": 3
+  },
+  "gyro": {
+    "port": "COM7"
   }
 }
 ```
+
+The Settings screen (**F12**) saves changes to this same file: it re-reads the file, changes only the edited key and writes the whole file back indented. Every setting is meant to be editable there; the ones that are not yet (paths, sounds, lists) are still edited by hand.
 
 | Key | Description |
 |-----|-------------|
@@ -144,6 +162,8 @@ Settings are loaded from `config.json` in the working directory or from the file
 | `ignition_tuning.max_ignition` | Highest raw ignition value (degrees) a cell can reach; default `50` |
 | `ignition_tuning.settle_seconds` | Seconds ignored after a write, a resume or the lambda loop closing again; default `5` |
 | `ignition_tuning.min_scenario_seconds` | Analysed seconds a scenario needs before it is compared; default `20` |
+| `ignition_tuning.max_tilt_deg` | Highest absolute pitch (degrees) at which the ignition analysis samples, when the inclinometer is configured; default `3` |
+| `gyro.port` | COM port of the inclinometer; `""` (default) means there is none. When set, the inclinometer is **required** by the ignition analysis. The link is fixed at 115200 baud |
 | `ignition_tuning.write_sound` / `ready_sound` / `pause_sound` / `resume_sound` / `discard_sound` | `.wav` cues: ignition rows written, scenario has enough time, analysis paused / resumed, worst scenario discarded |
 
 Signal definitions (name, ECU index, unit, limits, graph color, alarm thresholds) are in `app/masterinjection/signal.py`.
@@ -152,7 +172,7 @@ Signal definitions (name, ECU index, unit, limits, graph color, alarm thresholds
 
 ## Screens
 
-The app uses a full-screen stacked layout. Navigation between screens is keyboard-only. **Esc** returns to the Home screen from the Dashboard, the VE calibration screen, the ignition tuning screen and the Options screen. **F1** to **F4** open the Dashboard, VE calibration, Ignition tuning and Options from any screen.
+The app uses a full-screen stacked layout. Navigation between screens is keyboard-only. **Esc** returns to the Home screen from the Dashboard, the VE calibration screen, the ignition tuning screen, the ECU screen and the Settings screen. **F1** to **F4** and **F12** open the Dashboard, VE calibration, Ignition tuning, ECU and Settings from any screen.
 
 ### Home Screen
 
@@ -160,15 +180,24 @@ The entry point of the application. Displays the app title, connection status, a
 
 - Title: `Master Injection` centered at the top
 - Connection status: port/baudrate (or mock file path) + a colored dot — green when connected, red when disconnected. Refreshed every 500 ms.
-- Menu items: `Dashboard`, `Calibração de VE`, `Ajuste de Ignição` and `Opções`
+- Menu items: `Dashboard`, `Calibração de VE`, `Ajuste de Ignição`, `ECU` and `Configurações`
 - Keyboard hint at the bottom
 
-### Options Screen
+### ECU Screen
 
 List of ECU settings changed from the keyboard. For now it has one field:
 
 - **Fase** — `Negativa` or `Positiva` (`—` while the ECU value is unknown). **Enter** toggles it; the field shows the requested value followed by `…` while the change is in progress. One second after the last change the app requests `#X02`, replaces only the phase value (position 11, `0` = Negativa, `1` = Positiva), writes the block back (playing the VE confirmation sound `ve_calibration.ve_sound`) and reads it again to confirm. The write-on-memory command (`#D04`) is **not** sent, so the phase returns to the stored one when the ECU is power-cycled.
 - A status line shows `Alteração pendente…`, `Enviando para a ECU…`, `Fase aplicada (não gravada na memória)` or the failure (`Sem resposta da ECU`, `Resposta #X02 inválida`, `A ECU manteve a fase …`). Enter here does not stamp a `MARK` in the CSV log.
+
+### Settings Screen
+
+Opened with **F12** (or from the Home menu). Edits `config.json` from the keyboard; every change is saved at once and the status line reads `Salvo` (or `Não foi possível gravar a configuração`).
+
+- **Giroscópio** — **Porta** (**←** / **→** choose `Nenhuma` or one of the serial ports of the machine), **Conectar** / **Desconectar**, **Zerar inclinação** (sends `#Z`: the device takes the current position as level) and **Recalibrar giroscópio** (sends `#C`, only with the car stopped). Below them: the state (`Conectado, zerado`, `Sem zero`, `Sem sinal`, ...), pitch, roll, temperature and the latest message of the device.
+- **Ajuste de Ignição** — `Inclinação máxima` (0.5° steps), `RPM mínimo` / `RPM máximo` (100 rpm), `Estabilização` (1 s) and `Tempo mínimo do cenário` (5 s). Changing the RPM band discards the scenarios of the current run (its results file is closed first, with the old band).
+
+The inclinometer connects by itself when `gyro.port` is set (retrying every 2 s), but the app **never zeroes it for you**: after the app starts, after the device restarts or reconnects and after a recalibration, the inclination is not used until you zero it (key **G** on the ignition tuning screen, or **Zerar inclinação** here). The device keeps the zero; the app only remembers that the device confirmed it (`#M;Zero definido;`). Opening the port restarts many Arduino boards, which also drops the zero.
 
 ### Dashboard Screen
 
@@ -191,6 +220,7 @@ Live VE (Volumetric Efficiency) map viewer and editor. Allows real-time adjustme
 Built to be used while driving, with almost no looking: the driver holds a steady RPM in a fixed gear on a flat road, raises the advance one degree at a time and the screen shows what the engine needed to keep the same speed.
 
 - **Offset** — ↑ / ↓ move one global advance offset by ±1°. It is applied to every column of the ignition rows (`#I01`..`#I16`) whose MAP axis value is at or below `ignition_tuning.max_map_kpa`; higher rows are never touched. The written map is always `original + offset` (clamped to 0..`max_ignition`), so cells clamped at 0 return to their original value when the offset comes back up. Writes go to ECU RAM only: a power cycle restores the stored map.
+- **Inclination box** (second line of the top bar, next to the temperatures) — `Inclinação: +1.4° ↓` (positive = nose down) in green within the limit and red above it; orange while the inclinometer is configured but not usable (`sem zero (G)`, `sem sinal`, `desconectada`, `calibrando…`); gray `desligada` when there is none. **G** zeroes the inclinometer (nothing else changes). With `gyro.port` set the analysis needs a zeroed inclinometer: the status reads `AGUARDANDO SENSOR` until then, `INCLINADO` above the limit, and `ESTABILIZANDO` for `settle_seconds` when the car is level again.
 - **Top bar** — two lines: RPM, MAP, pedal, gear, ignition and lambda; below them CLT, IAT, the gear indicator (`4ª•  [5ª•]`: the shown gear in brackets, a dot when a gear holds data) and the analysed RPM band.
 - **Gears** — the screen shows the columns of one configured gear. It follows the engaged gear whenever it changes to a configured one; **←** / **→** switch to the other configured gear (to review it while stopped) until the next gear change. Sampling always goes to the engaged gear, whatever is shown, and the percentage differences and the best column are computed inside each gear.
 - **Columns** — one per offset tried in the shown gear, in ascending order: analysed time, mean ignition, mean injection time, mean MAP, mean pedal, mean lambda and the knock counter increase. For injection time, MAP and pedal the percentage difference to the best value of that sensor is shown; the column with the lowest mean injection time (among columns with enough analysed time, at least two) gets a green border.
@@ -209,9 +239,12 @@ Built to be used while driving, with almost no looking: the driver holds a stead
 | **Enter** | Dashboard, VE Calibration, Ignition Tuning | Beep + stamp `MARK` on the next CSV row |
 | **↑ / ↓** | Home | Navigate menu |
 | **Enter** | Home | Open selected screen |
-| **F1** / **F2** / **F3** / **F4** | Any screen | Open the Dashboard / VE Calibration / Ignition Tuning / Options screen |
-| **Esc** | Options | Return to Home screen |
-| **Enter** | Options | Toggle the phase (Negativa ↔ Positiva), written to the ECU 1 s after the last change, not saved to memory |
+| **F1** / **F2** / **F3** / **F4** / **F12** | Any screen | Open the Dashboard / VE Calibration / Ignition Tuning / ECU / Settings screen |
+| **Esc** | ECU, Settings | Return to Home screen |
+| **↑ / ↓** | Settings | Select a row |
+| **← / →** | Settings | Change the selected value (port, limits, RPM band, times) |
+| **Enter** | Settings | Connect / disconnect, zero the inclination or recalibrate the gyroscope |
+| **Enter** | ECU | Toggle the phase (Negativa ↔ Positiva), written to the ECU 1 s after the last change, not saved to memory |
 | **↑ / ↓** | VE Calibration | Adjust VE ±5 raw units (0.5 %) at the current operating point |
 | **O** | VE Calibration | Send `LAMBDA_LOOP_OPEN` to the ECU + play sound |
 | **P** | VE Calibration | Send `LAMBDA_LOOP_CLOSE` to the ECU + play sound |
@@ -220,6 +253,7 @@ Built to be used while driving, with almost no looking: the driver holds a stead
 | **← / →** | Ignition Tuning | Show the previous / next configured gear (until the engaged gear changes) |
 | **Space** | Ignition Tuning | Pause / resume the analysis |
 | **X** | Ignition Tuning | Discard the worst scenario of the shown gear (not the current one); changes no map value |
+| **G** | Ignition Tuning | Zero the inclinometer (`#Z`): the current position becomes level |
 | **R** | Ignition Tuning | Offset back to 0, original ignition map written back, every gear cleared, results file closed |
 
 ---

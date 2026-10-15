@@ -1,6 +1,6 @@
 import enum
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 from app.config import config
 from app.masterinjection.signal import Signal
@@ -18,9 +18,20 @@ _REQUIRED = (
 COMPARED = (Signal.INJ_PULSE, Signal.MAP, Signal.PEDAL)
 
 
+class Tilt(NamedTuple):
+    """The inclinometer as the analysis sees it: required when a port is configured, `pitch` only while usable."""
+    required: bool = False
+    pitch: Optional[float] = None
+
+
+NO_TILT = Tilt()
+
+
 class AnalysisStatus(enum.Enum):
     PAUSED = "PAUSADO"
     WAITING_ECU = "AGUARDANDO ECU"
+    WAITING_SENSOR = "AGUARDANDO SENSOR"
+    TILTED = "INCLINADO"
     SETTLING = "ESTABILIZANDO"
     OUT_OF_RANGE = "FORA DA FAIXA"
     ANALYSING = "ANALISANDO"
@@ -61,13 +72,15 @@ class IgnitionAnalysis:
     """
 
     def __init__(self, rpm_min: Optional[int] = None, rpm_max: Optional[int] = None,
-                 gears: Optional[List[int]] = None, settle_seconds: Optional[float] = None, min_scenario_seconds: Optional[float] = None):
+                 gears: Optional[List[int]] = None, settle_seconds: Optional[float] = None,
+                 min_scenario_seconds: Optional[float] = None, max_tilt_deg: Optional[float] = None):
         cfg = config.ignition_tuning
         self.rpm_min = cfg.rpm_min if rpm_min is None else rpm_min
         self.rpm_max = cfg.rpm_max if rpm_max is None else rpm_max
         self.gears = list(cfg.gears if gears is None else gears)
         self.settle_seconds = cfg.settle_seconds if settle_seconds is None else settle_seconds
         self.min_scenario_seconds = cfg.min_scenario_seconds if min_scenario_seconds is None else min_scenario_seconds
+        self.max_tilt_deg = cfg.max_tilt_deg if max_tilt_deg is None else max_tilt_deg
         self.paused = False
         self._scenarios: Dict[Tuple[int, int], _Accumulator] = {}  # (gear, offset) -> accumulator
         self._discarded: List[ScenarioStats] = []
@@ -76,6 +89,7 @@ class IgnitionAnalysis:
         self._awaiting_write = False
         self._settle_until: Optional[float] = None
         self._loop_closed = False
+        self._tilt_ok = False  # the inclination condition held at the previous set (false while it is not required)
         self._prev: Optional[tuple] = None  # (time, knock, offset, gear) of the previous sample of the current run
 
     # ── Events ───────────────────────────────────────────────────────────────
@@ -134,16 +148,42 @@ class IgnitionAnalysis:
         self.revision += 1
         return True
 
+    def band_differs_from_config(self) -> bool:
+        """Whether the configured RPM band is no longer the one the scenarios were analysed with."""
+        cfg = config.ignition_tuning
+        return (cfg.rpm_min, cfg.rpm_max) != (self.rpm_min, self.rpm_max)
+
+    def reload_settings(self) -> bool:
+        """
+        Take the RPM band, the settle time, the minimum scenario time and the tilt limit from the configuration.
+        A new RPM band discards the scenarios of every gear (scenarios of different bands are not comparable);
+        nothing else changes: the pause, the offset and the ECU are left alone. Returns whether the band changed.
+        """
+        band_changed = self.band_differs_from_config()
+        cfg = config.ignition_tuning
+        self.rpm_min, self.rpm_max = cfg.rpm_min, cfg.rpm_max
+        self.settle_seconds = cfg.settle_seconds
+        self.min_scenario_seconds = cfg.min_scenario_seconds
+        self.max_tilt_deg = cfg.max_tilt_deg
+        if band_changed:
+            self._scenarios.clear()
+            self._discarded.clear()
+            self.revision += 1
+            self._prev = None
+        return band_changed
+
     # ── Telemetry ────────────────────────────────────────────────────────────
 
-    def process(self, signals: dict, now: float, offset: int, map_loaded: bool) -> bool:
+    def process(self, signals: dict, now: float, offset: int, map_loaded: bool, tilt: Tilt = NO_TILT) -> bool:
         """
         Feed one telemetry set. Returns True when the scenario of `offset` just reached the minimum
         analysed time (the "ready" notification).
         """
         self._track_lambda_loop(signals, now)
+        self._track_tilt(tilt, now)
 
-        if self.paused or not map_loaded or self._is_settling(now) or not self._conditions_met(signals):
+        if (self.paused or not map_loaded or self._is_settling(now) or not self._tilt_condition(tilt)
+                or not self._conditions_met(signals)):
             self._prev = None
             return False
 
@@ -169,12 +209,16 @@ class IgnitionAnalysis:
 
     # ── Queries ──────────────────────────────────────────────────────────────
 
-    def status(self, signals: dict, now: float, map_loaded: bool) -> AnalysisStatus:
+    def status(self, signals: dict, now: float, map_loaded: bool, tilt: Tilt = NO_TILT) -> AnalysisStatus:
         """What the screen reports, in priority order."""
         if self.paused:
             return AnalysisStatus.PAUSED
         if not map_loaded:
             return AnalysisStatus.WAITING_ECU
+        if tilt.required and tilt.pitch is None:
+            return AnalysisStatus.WAITING_SENSOR
+        if tilt.required and abs(tilt.pitch) > self.max_tilt_deg:
+            return AnalysisStatus.TILTED
         if self._is_settling(now):
             return AnalysisStatus.SETTLING
         if not self._conditions_met(signals):
@@ -237,6 +281,19 @@ class IgnitionAnalysis:
         if not closed:
             self._prev = None
         self._loop_closed = closed
+
+    def _tilt_condition(self, tilt: Tilt) -> bool:
+        """With an inclinometer configured: usable and within the limit. Without one: always true."""
+        return not tilt.required or (tilt.pitch is not None and abs(tilt.pitch) <= self.max_tilt_deg)
+
+    def _track_tilt(self, tilt: Tilt, now: float):
+        """Becoming usable and level starts the settle wait; anything else breaks the continuous run."""
+        ok = tilt.required and self._tilt_condition(tilt)
+        if ok and not self._tilt_ok:
+            self._settle_until = now + self.settle_seconds
+        if tilt.required and not ok:
+            self._prev = None
+        self._tilt_ok = ok
 
     def _is_settling(self, now: float) -> bool:
         return self._awaiting_write or (self._settle_until is not None and now < self._settle_until)

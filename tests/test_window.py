@@ -35,9 +35,9 @@ def window(qapp, processor, ecu_commands):
     w.close()
 
 
-def test_window_registers_the_five_screens_and_starts_on_home(window):
+def test_window_registers_the_six_screens_and_starts_on_home(window):
     """Requirement: Full-screen multi-screen window."""
-    assert set(window._screens) == {"home", "dashboard", "ve_calibration", "ignition_tuning", "options"}
+    assert set(window._screens) == {"home", "dashboard", "ve_calibration", "ignition_tuning", "options", "settings"}
     assert window._current_screen_name == "home"
     assert window.stacked_widget.currentWidget() is window._screens["home"]
 
@@ -102,7 +102,7 @@ def test_key_events_go_only_to_the_visible_screen(window):
         window._screens[name].keyReleaseEvent.assert_not_called()
 
 
-@pytest.mark.parametrize("screen", ["dashboard", "ve_calibration", "ignition_tuning", "options"])
+@pytest.mark.parametrize("screen", ["dashboard", "ve_calibration", "ignition_tuning", "options", "settings"])
 def test_escape_returns_to_home_from_data_screens(window, screen):
     """Requirement: Return to Home with ESC (Scenario: Back from calibration)."""
     window.show_screen(screen)
@@ -392,10 +392,11 @@ SHORTCUTS = [
     (Qt.Key.Key_F2, "ve_calibration"),
     (Qt.Key.Key_F3, "ignition_tuning"),
     (Qt.Key.Key_F4, "options"),
+    (Qt.Key.Key_F12, "settings"),
 ]
 
 
-@pytest.mark.parametrize("origin", ["home", "dashboard", "ve_calibration", "ignition_tuning", "options"])
+@pytest.mark.parametrize("origin", ["home", "dashboard", "ve_calibration", "ignition_tuning", "options", "settings"])
 @pytest.mark.parametrize("key,target", SHORTCUTS)
 def test_function_keys_open_their_screen_from_every_screen(window, origin, key, target):
     """Scenarios: F1 from Home / F2 from Dashboard / F3 from Options / F4 from VE calibration."""
@@ -430,6 +431,18 @@ def test_held_shortcut_switches_once(window):
         window.keyPressEvent(key_press(Qt.Key.Key_F4, auto_repeat=True))
 
     options.on_activated.assert_called_once()
+
+
+def test_held_f12_shows_settings_once(window):
+    """Scenario: Held shortcut (F12)."""
+    settings = window._screens["settings"]
+    settings.on_activated = Mock()
+
+    window.keyPressEvent(key_press(Qt.Key.Key_F12))
+    for _ in range(5):
+        window.keyPressEvent(key_press(Qt.Key.Key_F12, auto_repeat=True))
+
+    settings.on_activated.assert_called_once()
 
 
 def test_auto_repeat_shortcut_alone_does_not_switch(window):
@@ -470,6 +483,35 @@ def test_enter_on_options_is_not_announced(window, pressed):
     window.keyPressEvent(key_press(Qt.Key.Key_Return))
 
     assert pressed == []
+
+
+def test_enter_on_settings_is_not_announced(window, pressed):
+    """Requirement: Keys and event marker (Settings is not a data screen)."""
+    window.show_screen("settings")
+
+    window.keyPressEvent(key_press(Qt.Key.Key_Return))
+    window.keyPressEvent(key_press(Qt.Key.Key_Down))
+
+    assert pressed == []
+
+
+def test_a_setting_changed_on_the_settings_screen_reaches_the_ignition_screen(window):
+    """Spec: a new RPM band is taken by the ignition analysis (wiring between the two screens)."""
+    from app.config import config
+
+    ignition = window._screens["ignition_tuning"]
+    window.show_screen("settings")
+    settings = window._screens["settings"]
+    settings.keyPressEvent(key_press(Qt.Key.Key_Down))  # Conectar
+    for _ in range(4):
+        settings.keyPressEvent(key_press(Qt.Key.Key_Down))  # Inclinação máxima ... RPM mínimo
+    settings.keyPressEvent(key_press(Qt.Key.Key_Down))  # RPM máximo
+    assert settings.row_texts()[settings.selected_index][0] == "RPM máximo"
+
+    settings.keyPressEvent(key_press(Qt.Key.Key_Right))
+
+    assert config.ignition_tuning.rpm_max == 3200
+    assert ignition._analysis.rpm_max == 3200
 
 
 def test_opening_options_with_the_shortcut_requests_the_parameter_block(window, ecu_commands):

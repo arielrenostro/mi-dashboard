@@ -39,7 +39,8 @@ def test_home_shows_title_menu_and_hint(home):
 
     assert "Master Injection" in texts
     assert (texts.index("Dashboard") < texts.index("Calibração de VE") < texts.index("Ajuste de Ignição")
-            < texts.index("Opções"))
+            < texts.index("ECU") < texts.index("Configurações"))
+    assert "Opções" not in texts
     assert "↑↓ Navegar | Enter Selecionar" in texts
 
 
@@ -61,7 +62,7 @@ def test_down_moves_to_next_item(home):
 
 def test_down_from_last_item_wraps_to_first(home):
     """Scenario: Wrap down."""
-    for _ in range(4):
+    for _ in range(5):
         home.keyPressEvent(key_press(Qt.Key.Key_Down))
     home.keyPressEvent(key_press(Qt.Key.Key_Return))
 
@@ -73,7 +74,7 @@ def test_up_from_first_item_wraps_to_last(home):
     home.keyPressEvent(key_press(Qt.Key.Key_Up))
     home.keyPressEvent(key_press(Qt.Key.Key_Return))
 
-    assert home.requested == ["options"]
+    assert home.requested == ["settings"]
 
 
 def test_ignition_tuning_entry_opens_the_ignition_tuning_screen(home):
@@ -86,12 +87,29 @@ def test_ignition_tuning_entry_opens_the_ignition_tuning_screen(home):
 
 
 def test_options_entry_opens_the_options_screen(home):
-    """Scenario: Options entry."""
+    """Scenario: Options entry (the entry reads ECU)."""
     for _ in range(3):
         home.keyPressEvent(key_press(Qt.Key.Key_Down))
     home.keyPressEvent(key_press(Qt.Key.Key_Return))
 
     assert home.requested == ["options"]
+
+
+def test_settings_entry_opens_the_settings_screen(home):
+    """Scenario: Settings entry."""
+    for _ in range(4):
+        home.keyPressEvent(key_press(Qt.Key.Key_Down))
+    home.keyPressEvent(key_press(Qt.Key.Key_Return))
+
+    assert home.requested == ["settings"]
+
+
+def test_home_menu_content_and_order(home):
+    """Scenario: Menu content."""
+    assert [name for name, _ in home._menu_items] == [
+        "Dashboard", "Calibração de VE", "Ajuste de Ignição", "ECU", "Configurações"]
+    assert [target for _, target in home._menu_items] == [
+        "dashboard", "ve_calibration", "ignition_tuning", "options", "settings"]
 
 
 @pytest.mark.parametrize("enter", [Qt.Key.Key_Return, Qt.Key.Key_Enter])

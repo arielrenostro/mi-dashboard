@@ -3,7 +3,8 @@ import pytest
 
 from app.masterinjection.signal import Signal
 from app.masterinjection.signal_processor import SignalProcessor
-from app.ui.ignition_tuning.analysis import AnalysisStatus, IgnitionAnalysis
+from app.config import config
+from app.ui.ignition_tuning.analysis import NO_TILT, AnalysisStatus, IgnitionAnalysis, Tilt
 from tests.helpers import SAMPLE_FRAME, frame_with
 
 DEFAULT = dict(rpm=3000, gear=5, loop=2, pulse=108, map=45, pedal=495, knock=40, lam=1000, ign=40)
@@ -43,6 +44,7 @@ class Rig:
         self.t = 0.0
         self.offset = 0
         self.loaded = True
+        self.tilt = NO_TILT
         self.ready = 0
 
     def feed(self, seconds, drop=(), **fields):
@@ -52,12 +54,12 @@ class Rig:
 
     def one(self, drop=(), **fields):
         signals = make_set(self.processor, drop=drop, **fields)
-        if self.a.process(signals, self.t, self.offset, self.loaded):
+        if self.a.process(signals, self.t, self.offset, self.loaded, self.tilt):
             self.ready += 1
         self.t += self.step
 
     def status(self, **fields):
-        return self.a.status(make_set(self.processor, **fields), self.t, self.loaded)
+        return self.a.status(make_set(self.processor, **fields), self.t, self.loaded, self.tilt)
 
     def settled(self):
         """Arm the lambda-loop settling and wait it out, so that the next set is a sample."""
@@ -962,3 +964,294 @@ def test_the_revision_changes_with_samples_discards_and_resets(rig):
     revision = rig.a.revision
     rig.a.discard_worst(5, rig.offset)
     assert rig.a.revision > revision
+
+
+# ----------------------------------------------------------------- inclination (gyro-inclination)
+
+LEVEL = Tilt(True, 1.2)
+NOT_USABLE = Tilt(True, None)
+
+
+def tilt_rig(processor, tilt=LEVEL, **kwargs):
+    """A settled rig with the inclinometer required and `max_tilt_deg` 3."""
+    rig = Rig(processor, max_tilt_deg=3, **kwargs)
+    rig.tilt = tilt
+    return rig.settled()
+
+
+def test_a_level_set_is_a_sample(processor):
+    """Scenario: Level."""
+    rig = tilt_rig(processor)
+
+    rig.feed(2.0)
+
+    assert rig.stats()[0].samples == 4
+
+
+@pytest.mark.parametrize("pitch", [3.0, -3.0])
+def test_the_tilt_limit_is_inclusive(processor, pitch):
+    """Scenario: Limit is inclusive."""
+    rig = tilt_rig(processor, Tilt(True, pitch))
+
+    rig.feed(1.0)
+
+    assert rig.stats()[0].samples == 2
+
+
+@pytest.mark.parametrize("pitch", [4.2, -4.2, 3.01])
+def test_uphill_or_downhill_sets_are_discarded(processor, pitch):
+    """Scenario: Uphill or downhill."""
+    rig = tilt_rig(processor, Tilt(True, pitch))
+
+    rig.feed(2.0)
+
+    assert rig.stats() == {}
+
+
+def test_a_device_that_is_not_usable_discards_the_sets(processor):
+    """Scenario: Not zeroed."""
+    rig = tilt_rig(processor, NOT_USABLE)
+
+    rig.feed(2.0)
+
+    assert rig.stats() == {}
+
+
+def test_sensor_lost_in_the_middle_of_a_run_stops_the_sampling_until_it_is_back_and_settled(processor):
+    """Scenario: Sensor lost in the middle of a run."""
+    rig = tilt_rig(processor)
+    rig.feed(2.0)
+    assert rig.stats()[0].samples == 4
+
+    rig.tilt = NOT_USABLE
+    rig.feed(3.0)
+    assert rig.stats()[0].samples == 4
+
+    rig.tilt = LEVEL
+    rig.feed(4.5)
+    assert rig.stats()[0].samples == 4
+    rig.feed(1.5)
+    assert rig.stats()[0].samples == 6
+
+
+def test_the_analysis_only_knows_the_pitch(processor):
+    """Scenario: Roll ignored. The roll is not an input of the analysis."""
+    assert Tilt._fields == ("required", "pitch")
+
+
+def test_without_a_configured_sensor_the_pitch_is_ignored(processor):
+    """Scenario: Sensor not configured."""
+    rig = Rig(processor).settled()
+    rig.tilt = Tilt(False, 45.0)
+
+    rig.feed(1.0)
+
+    assert rig.stats()[0].samples == 2
+
+
+def test_level_again_settles_before_sampling(processor):
+    """Scenario: Level again."""
+    rig = tilt_rig(processor, Tilt(True, 5.0))
+    rig.feed(2.0)
+    assert rig.stats() == {}
+
+    rig.tilt = LEVEL
+    rig.feed(4.5)
+    assert rig.stats() == {}
+    rig.feed(1.5)
+    assert rig.stats()[0].samples == 2
+
+
+def test_the_first_usable_reading_settles(processor):
+    """Scenario: First usable reading."""
+    rig = Rig(processor, max_tilt_deg=3).settled()
+    rig.tilt = LEVEL
+
+    rig.feed(4.5)
+    assert rig.stats() == {}
+    rig.feed(1.5)
+    assert rig.stats()[0].samples == 2
+
+
+def test_the_inclination_is_tracked_while_another_condition_fails(processor):
+    """Scenario: Tracked while another condition fails."""
+    rig = Rig(processor, max_tilt_deg=3).settled()
+    rig.tilt = LEVEL
+
+    rig.feed(2.0, rpm=3400)
+    rig.feed(2.5)
+    assert rig.stats() == {}
+    rig.feed(1.5)
+    assert rig.stats()[0].samples == 2
+
+
+def test_crossing_the_limit_again_restarts_the_wait(processor):
+    """Scenario: Crossing again."""
+    rig = tilt_rig(processor)
+    rig.feed(3.0)
+    samples = rig.stats()[0].samples
+
+    rig.tilt = Tilt(True, 5.0)
+    rig.feed(1.0)
+    rig.tilt = LEVEL
+    rig.feed(4.5)
+    assert rig.stats()[0].samples == samples
+    rig.feed(1.5)
+    assert rig.stats()[0].samples == samples + 2
+
+
+def test_a_pitch_that_changes_without_a_configured_sensor_starts_no_wait(processor):
+    """Scenario: Not required."""
+    rig = Rig(processor).settled()
+    rig.tilt = Tilt(False, 9.0)
+    rig.feed(1.0)
+    rig.tilt = Tilt(False, 0.5)
+
+    rig.feed(1.0)
+
+    assert rig.stats()[0].samples == 4
+
+
+def test_a_continuous_run_is_not_bridged_over_a_tilted_period(processor):
+    rig = tilt_rig(processor)
+    rig.feed(2.0)
+    time_before = rig.stats()[0].time_s
+
+    rig.tilt = Tilt(True, 6.0)
+    rig.feed(0.5)
+    rig.tilt = LEVEL
+    rig.feed(5.0)
+    rig.feed(0.5)
+
+    assert rig.stats()[0].time_s == time_before  # the gap is not counted as analysed time
+
+
+# -- statuses
+
+def test_status_waits_for_the_sensor(processor):
+    """Scenario: Waiting for the sensor."""
+    rig = tilt_rig(processor, NOT_USABLE)
+
+    assert rig.status() == AnalysisStatus.WAITING_SENSOR
+
+
+def test_the_sensor_has_priority_over_the_band(processor):
+    """Scenario: Sensor has priority over the band."""
+    rig = tilt_rig(processor, NOT_USABLE)
+
+    assert rig.status(rpm=3400) == AnalysisStatus.WAITING_SENSOR
+
+
+def test_status_is_tilted_above_the_limit(processor):
+    """Scenario: Tilted."""
+    rig = tilt_rig(processor, Tilt(True, 4.5))
+
+    assert rig.status() == AnalysisStatus.TILTED
+
+
+def test_status_settles_when_the_car_is_level_again(processor):
+    """Scenario: Settling after the inclination is level."""
+    rig = tilt_rig(processor, Tilt(True, 4.5))
+    rig.feed(1.0)
+    rig.tilt = LEVEL
+    rig.one()
+
+    assert rig.status() == AnalysisStatus.SETTLING
+    rig.feed(5.0)
+    assert rig.status() == AnalysisStatus.ANALYSING
+
+
+@pytest.mark.parametrize("tilt", [Tilt(False, None), Tilt(False, 20.0)])
+def test_the_sensor_statuses_never_show_without_a_configured_sensor(processor, tilt):
+    """Scenario: No sensor configured."""
+    rig = Rig(processor).settled()
+    rig.tilt = tilt
+
+    assert rig.status() == AnalysisStatus.ANALYSING
+
+
+def test_paused_and_map_not_loaded_keep_their_priority_over_the_sensor(processor):
+    rig = tilt_rig(processor, NOT_USABLE)
+    rig.loaded = False
+    assert rig.status() == AnalysisStatus.WAITING_ECU
+    rig.loaded = True
+    rig.a.pause()
+
+    assert rig.status() == AnalysisStatus.PAUSED
+
+
+# -- settings applied while running
+
+def test_tilt_limit_comes_from_the_configuration(processor):
+    config.ignition_tuning.max_tilt_deg = 2.5
+
+    assert IgnitionAnalysis().max_tilt_deg == 2.5
+
+
+def test_a_new_rpm_band_discards_every_scenario(processor):
+    """Scenario: Band changed."""
+    rig = Rig(processor).settled()
+    rig.feed(2.0)
+    assert rig.stats()
+
+    config.ignition_tuning.rpm_max = 3200
+    assert rig.a.band_differs_from_config() is True
+    assert rig.a.reload_settings() is True
+
+    assert rig.stats() == {} and rig.a.discarded() == []
+    rig.feed(1.0, rpm=3150)
+    assert rig.stats()[0].samples == 2
+
+
+def test_a_new_band_keeps_the_pause_and_the_offset(processor):
+    rig = Rig(processor).settled()
+    rig.a.pause()
+    config.ignition_tuning.rpm_min = 2800
+
+    rig.a.reload_settings()
+
+    assert rig.a.paused is True and (rig.a.rpm_min, rig.a.rpm_max) == (2800, 3100)
+
+
+def test_reloading_without_a_band_change_keeps_the_scenarios(processor):
+    """Scenario: Settle time changed (no scenario is discarded)."""
+    rig = Rig(processor).settled()
+    rig.feed(2.0)
+    config.ignition_tuning.settle_seconds = 8
+    config.ignition_tuning.min_scenario_seconds = 30
+    config.ignition_tuning.max_tilt_deg = 5
+
+    assert rig.a.reload_settings() is False
+
+    assert rig.stats()[0].samples == 4
+    assert (rig.a.settle_seconds, rig.a.min_scenario_seconds, rig.a.max_tilt_deg) == (8, 30, 5)
+
+
+def test_the_new_settle_time_is_used_after_the_next_write(processor):
+    """Scenario: Settle time changed."""
+    rig = Rig(processor).settled()
+    config.ignition_tuning.settle_seconds = 8
+    rig.a.reload_settings()
+
+    rig.change_offset(1)
+    rig.write()
+
+    rig.feed(5.0)
+    assert rig.status() == AnalysisStatus.SETTLING
+    rig.feed(3.0)
+    assert rig.status() == AnalysisStatus.ANALYSING
+
+
+def test_a_new_tilt_limit_is_used_at_once(processor):
+    """Scenario: Tilt limit changed."""
+    rig = tilt_rig(processor, Tilt(True, 4.0))
+    rig.feed(1.0)
+    assert rig.stats() == {}
+
+    config.ignition_tuning.max_tilt_deg = 5
+    rig.a.reload_settings()
+    rig.feed(4.5)
+    assert rig.stats() == {}
+    rig.feed(1.5)
+
+    assert rig.stats()[0].samples == 2

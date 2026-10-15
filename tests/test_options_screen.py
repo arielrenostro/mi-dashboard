@@ -52,7 +52,8 @@ def test_initial_content(options):
     """Scenario: Initial content."""
     shown = texts(options)
 
-    assert "Opções" in shown
+    assert "ECU" in shown
+    assert "Opções" not in shown
     assert "Fase" in shown
     assert "↑↓ Navegar | Enter Alterar | Esc Voltar" in shown
     assert options._status_label.text() == ""

@@ -101,7 +101,8 @@ class HomeScreen(Screen):
             ("Dashboard", "dashboard"),
             ("Calibração de VE", "ve_calibration"),
             ("Ajuste de Ignição", "ignition_tuning"),
-            ("Opções", "options"),
+            ("ECU", "options"),
+            ("Configurações", "settings"),
         ]
 
         self._menu_labels = []

@@ -10,6 +10,7 @@ from app.ui.dashboard.screen import DashboardScreen
 from app.ui.home.screen import HomeScreen
 from app.ui.ignition_tuning.screen import IgnitionTuningScreen
 from app.ui.options.screen import OptionsScreen
+from app.ui.settings.screen import SettingsScreen
 from app.ui.ve_calibration.screen import VeCalibrationScreen
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ class AppWindow(QWidget):
         Qt.Key.Key_F2: "ve_calibration",
         Qt.Key.Key_F3: "ignition_tuning",
         Qt.Key.Key_F4: "options",
+        Qt.Key.Key_F12: "settings",
     }
 
     def __init__(self, signal_processor: SignalProcessor):
@@ -59,6 +61,9 @@ class AppWindow(QWidget):
 
         options_screen = OptionsScreen(close_fn=lambda: self.show_screen("home"))
 
+        settings_screen = SettingsScreen(close_fn=lambda: self.show_screen("home"))
+        settings_screen.setting_changed.connect(ignition_tuning_screen.on_setting_changed)
+
         dashboard_screen = DashboardScreen(
             close_fn=lambda: self.show_screen("home"),
             grid=config.dashboard.grid,
@@ -86,6 +91,10 @@ class AppWindow(QWidget):
         self._register_screen(
             "options",
             options_screen,
+        )
+        self._register_screen(
+            "settings",
+            settings_screen,
         )
 
     def on_connection_error(self, message: str):

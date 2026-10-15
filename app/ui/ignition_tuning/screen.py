@@ -5,15 +5,17 @@ from typing import Optional
 from PyQt6.QtCore import Qt, QTimer, QUrl
 from PyQt6.QtGui import QFont, QKeyEvent
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
-from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from app.config import config
+from app.gyro import get_gyro
+from app.gyro.state import GyroSnapshot, GyroStatus
 from app.masterinjection.signal import Signal
 from app.state.event import EventType, VehicleStateChangeEvent
 from app.state.state import vehicle_state
 from app.ui.base.screen import Screen
 from app.ui.components.signal_card import SignalCard
-from app.ui.ignition_tuning.analysis import AnalysisStatus, IgnitionAnalysis, ScenarioStats
+from app.ui.ignition_tuning.analysis import AnalysisStatus, IgnitionAnalysis, ScenarioStats, Tilt
 from app.ui.ignition_tuning.ignition_map_state import IgnitionMapState, ignition_map_state
 from app.ui.ignition_tuning.ignition_write_controller import IgnitionWriteController
 from app.ui.ignition_tuning.results_log import IgnitionResultsLog
@@ -39,6 +41,8 @@ _STATUS_COLORS = {
     AnalysisStatus.SETTLING: "#E7C53C",
     AnalysisStatus.OUT_OF_RANGE: "#FF8800",
     AnalysisStatus.WAITING_ECU: "#888888",
+    AnalysisStatus.WAITING_SENSOR: "#FF8800",
+    AnalysisStatus.TILTED: "#E74C3C",
     AnalysisStatus.PAUSED: "#1E90FF",
 }
 
@@ -47,7 +51,8 @@ _PLAIN_BORDER = "#151515"
 _CURRENT_HEADER_BG = "#1E90FF"
 _DIM_TEXT = "#777777"
 
-_FOOTER_TEXT = "↑ +1°   ↓ -1°   ←→ Marcha   Espaço Pausa   X Descarta pior   R Resetar   ESC Voltar"
+_FOOTER_TEXT = ("↑ +1°   ↓ -1°   ←→ Marcha   Espaço Pausa   X Descarta pior   R Resetar   G Zerar inclinação   "
+                "ESC Voltar")
 _EMPTY_TEXT = "Sem amostras ainda: mantenha a faixa de RPM, a marcha e o lambda em malha fechada"
 
 
@@ -59,6 +64,32 @@ def format_offset(offset: int) -> str:
 def format_column_offset(offset: int) -> str:
     """Column header form of the offset: `+1°`, `0° orig`, `-1°`."""
     return "0° orig" if offset == 0 else f"{offset:+d}°"
+
+
+_TILT_GREEN = "#2ECC71"
+_TILT_RED = "#E74C3C"
+_TILT_ORANGE = "#FF8800"
+_TILT_GRAY = "#777777"
+
+_TILT_TEXTS = {
+    GyroStatus.DISABLED: ("desligada", _TILT_GRAY),
+    GyroStatus.DISCONNECTED: ("desconectada", _TILT_ORANGE),
+    GyroStatus.CALIBRATING: ("calibrando…", _TILT_ORANGE),
+    GyroStatus.NO_SIGNAL: ("sem sinal", _TILT_ORANGE),
+    GyroStatus.NOT_ZEROED: ("sem zero (G)", _TILT_ORANGE),
+}
+
+
+def format_inclination(snapshot: GyroSnapshot, max_tilt_deg: float) -> tuple:
+    """The inclination box: (`Inclinação: +1.4° ↓`, colour). Positive pitch is nose down, negative nose up."""
+    if snapshot.status is not GyroStatus.USABLE:
+        text, color = _TILT_TEXTS[snapshot.status]
+        return f"Inclinação: {text}", color
+    pitch = snapshot.pitch
+    color = _TILT_GREEN if abs(pitch) <= max_tilt_deg else _TILT_RED
+    if round(pitch, 1) == 0:
+        return "Inclinação: 0.0°", color
+    return f"Inclinação: {pitch:+.1f}° {'↓' if pitch > 0 else '↑'}", color
 
 
 def format_gear_indicator(gears: list, shown: int, with_data: list) -> str:
@@ -163,8 +194,9 @@ class IgnitionTuningScreen(Screen):
 
     def __init__(self, close_fn: Callable, state: Optional[IgnitionMapState] = None,
                  analysis: Optional[IgnitionAnalysis] = None, clock: Callable[[], float] = time.monotonic,
-                 results: Optional[IgnitionResultsLog] = None):
+                 results: Optional[IgnitionResultsLog] = None, gyro=None):
         super().__init__(close_fn)
+        self._gyro = get_gyro() if gyro is None else gyro
         self._state = ignition_map_state if state is None else state
         self._analysis = IgnitionAnalysis() if analysis is None else analysis
         self._results = IgnitionResultsLog(self._analysis) if results is None else results
@@ -233,26 +265,42 @@ class IgnitionTuningScreen(Screen):
         self._top_bar_cards: dict[Signal, SignalCard] = {}
         for signal in _TOP_BAR_SIGNALS:
             card = SignalCard(signal)
-            first.addWidget(card)
+            self._equal_column(card)
+            first.addWidget(card, stretch=1)
             self._top_bar_cards[signal] = card
         lines.addLayout(first)
 
+        # The second line uses the same columns as the first one: CLT and IAT one column each, the inclination
+        # box two, the gear indicator and the RPM band the last two.
         second = QHBoxLayout()
         second.setSpacing(0)
         self._second_line_cards: dict[Signal, SignalCard] = {}
         for signal in _SECOND_LINE_SIGNALS:
             card = SignalCard(signal)
-            second.addWidget(card)
+            self._equal_column(card)
+            second.addWidget(card, stretch=1)
             self._second_line_cards[signal] = card
-        second.addStretch()
-        self.gear_label = self._info_label(30)
-        self.band_label = self._info_label(30)
-        second.addWidget(self.gear_label)
-        second.addSpacing(40)
-        second.addWidget(self.band_label)
-        second.addStretch()
+        self.inclination_label = QLabel("")
+        self.inclination_label.setFont(self._bold_font(22))
+        self.inclination_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._equal_column(self.inclination_label)
+        second.addWidget(self.inclination_label, stretch=2)
+        gear_band_widget = QWidget()
+        self._equal_column(gear_band_widget)
+        gear_band = QHBoxLayout(gear_band_widget)
+        gear_band.setContentsMargins(0, 0, 0, 0)
+        gear_band.setSpacing(0)
+        self.gear_label = self._info_label(22)
+        self.band_label = self._info_label(22)
+        gear_band.addStretch()
+        gear_band.addWidget(self.gear_label)
+        gear_band.addSpacing(30)
+        gear_band.addWidget(self.band_label)
+        gear_band.addStretch()
+        second.addWidget(gear_band_widget, stretch=2)
         lines.addLayout(second)
         layout.addLayout(lines, stretch=1)
+        layout.addSpacing(24)
 
         info = QVBoxLayout()
         info.setSpacing(0)
@@ -267,6 +315,12 @@ class IgnitionTuningScreen(Screen):
         info.addWidget(self.status_label)
         layout.addLayout(info)
         return container
+
+    @staticmethod
+    def _equal_column(widget: QWidget):
+        """Ignore the widget's own width so the stretch factors alone share the line: both lines then use the
+        same six columns, whatever the text inside."""
+        widget.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 
     @staticmethod
     def _bold_font(size: int) -> QFont:
@@ -345,6 +399,8 @@ class IgnitionTuningScreen(Screen):
             self._discard_worst()
         elif key == Qt.Key.Key_R:
             self._reset()
+        elif key == Qt.Key.Key_G:
+            self._gyro.zero()
 
     def _change_offset(self, delta: int):
         if not self._state.adjust_offset(delta):
@@ -395,10 +451,25 @@ class IgnitionTuningScreen(Screen):
         if not self._active:
             return
         self._follow_engaged_gear(signals)
-        ready = self._analysis.process(signals, self._clock(), self._state.offset, self._state.is_loaded())
+        ready = self._analysis.process(signals, self._clock(), self._state.offset, self._state.is_loaded(),
+                                       self._tilt())
         self._results.tick()
         if ready:
             self._play("ready")
+
+    def _tilt(self) -> Tilt:
+        """The inclinometer for the analysis: required whenever a port is configured, pitch only while usable."""
+        snapshot = self._gyro.snapshot()
+        return Tilt(snapshot.status is not GyroStatus.DISABLED, snapshot.pitch)
+
+    def on_setting_changed(self, section: str, key: str):
+        """A setting was changed on the Settings screen. A new RPM band ends the results of the current run first."""
+        if section != "ignition_tuning":
+            return
+        if self._analysis.band_differs_from_config():
+            self._results.end_run()  # written with the band the scenarios were analysed with
+        self._analysis.reload_settings()
+        self._refresh()
 
     def flush_results(self):
         """Write the ignition results now if they changed (the window calls this when it closes)."""
@@ -438,9 +509,12 @@ class IgnitionTuningScreen(Screen):
             self._analysis.gears, self._shown_gear, self._analysis.gears_with_data()))
         self.band_label.setText(f"Faixa {self._analysis.rpm_min}-{self._analysis.rpm_max}")
         self.offset_label.setText(format_offset(self._state.offset))
-        status = self._analysis.status(vehicle_state.get_all(), self._clock(), self._state.is_loaded())
+        status = self._analysis.status(vehicle_state.get_all(), self._clock(), self._state.is_loaded(), self._tilt())
         self.status_label.setText(status.value)
         self.status_label.setStyleSheet(f"color: {_STATUS_COLORS[status]};")
+        text, color = format_inclination(self._gyro.snapshot(), self._analysis.max_tilt_deg)
+        self.inclination_label.setText(text)
+        self.inclination_label.setStyleSheet(f"color: {color}; border: 3px solid {color}; margin: 12px 0px; padding: 2px 8px;")
 
     def _update_columns(self):
         stats = self._analysis.scenarios(self._shown_gear)

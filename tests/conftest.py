@@ -9,6 +9,7 @@ os.environ["MI_DASHBOARD_CONFIG_FILE"] = os.path.join(os.path.dirname(__file__),
 import pytest
 from PyQt6.QtWidgets import QApplication
 
+from app.config import config
 from app.state.state import vehicle_state
 
 
@@ -25,6 +26,21 @@ def clean_vehicle_state():
     vehicle_state.__init__()
     yield
     vehicle_state.__init__()
+
+
+@pytest.fixture(autouse=True)
+def isolated_config(tmp_path):
+    """
+    The settings are a module singleton and the app now saves them: send every save to a temporary file (never
+    next to the repository or to the developer's config.json) and give every test the settings it started with.
+    """
+    original_path = config.path
+    originals = {name: dict(vars(section)) for name, section in config.sections().items()}
+    config.path = str(tmp_path / "config.json")
+    yield
+    config.path = original_path
+    for name, values in originals.items():
+        vars(config.sections()[name]).update(values)
 
 
 class RecordingEmitter:
