@@ -6,11 +6,11 @@ Defines the Options screen, a keyboard-driven list of ECU settings that can be c
 ## Requirements
 
 ### Requirement: Options screen layout
-The Options screen (name `options`) SHALL have a black background, the title `Opções` in large bold white text, a vertical list of fields and the hint `↑↓ Navegar | Enter Alterar | Esc Voltar` in gray at the bottom. Each field SHALL be one row with its label on the left and its current value on the right. The list SHALL contain, for now, only the field `Fase`. The selected field SHALL be drawn with white text, a blue border and a translucent blue background, like the selected Home menu item. Below the list a status line SHALL show the latest status message (empty when there is none).
+The Options screen (name `options`, shown to the user as `ECU`) SHALL have a black background, the title `ECU` in large bold white text, a vertical list of fields and the hint `↑↓ Navegar | Enter Alterar | Esc Voltar` in gray at the bottom. Each field SHALL be one row with its label on the left and its current value on the right. The list SHALL contain, for now, only the field `Fase`. The selected field SHALL be drawn with white text, a blue border and a translucent blue background, like the selected Home menu item. Below the list a status line SHALL show the latest status message (empty when there is none).
 
 #### Scenario: Initial content
 - **WHEN** the Options screen is shown for the first time
-- **THEN** it shows the title `Opções`, the field `Fase` selected, the hint and an empty status line
+- **THEN** it shows the title `ECU`, the field `Fase` selected, the hint and an empty status line
 
 ### Requirement: Phase display
 The `Fase` field SHALL show `Negativa` when the latest `#X02` block known to the app has phase value 0, `Positiva` when it has phase value 1, and `—` when no `#X02` block is known yet or the phase value is neither 0 nor 1. While a phase change is waiting to be sent or confirmed, the field SHALL show the requested phase instead, followed by ` …`. The field SHALL follow the shared state: when a new `#X02` block is published and no change is in progress, the displayed value SHALL update without any key press.
