@@ -180,4 +180,4 @@ config.*.json
 
 datalog/**
 # Local WSL test environment
-.venv-wsl/
+dashboard/.venv-wsl/

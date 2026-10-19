@@ -4,7 +4,7 @@ from PyQt6.QtGui import QKeyEvent
 
 from app.masterinjection.signal import ParsedSignal, Signal
 
-# A real combined frame taken from log_stream.csv (34 fields, positions 0..33).
+# A real combined frame taken from tests/data/log_stream.csv (34 fields, positions 0..33).
 SAMPLE_FRAME = (
     "#D01;3415;20;10;41;41;1119;107;6;638;39;0;1;1000;1101;0;0;"
     "#D02;141;360;327;543;347;86;0;1000;1009;1170;150;0;784;5000;0;4"

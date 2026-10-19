@@ -3,7 +3,7 @@ schema: spec-driven
 context: |
   Python desktop app (PyQt6, pyqtgraph, pyserial) that shows live telemetry from the Master Injection ECU,
   plays alarms, logs CSV and edits the ECU VE map. Runs on Windows; developed partly in WSL.
-  Tests: pytest in tests/, one file per capability (tests/test_<capability>.py), Qt in offscreen mode,
+  Tests: pytest in dashboard/tests/ (run from dashboard/), one file per capability (dashboard/tests/test_<capability>.py), Qt in offscreen mode,
   fakes instead of hardware. See CLAUDE.md, section "Testing". Unit tests are mandatory for every
   feature, behavior change and bug fix.
 
@@ -12,11 +12,11 @@ rules:
     - Write every scenario so it can be checked by a unit test that needs no hardware, display or audio device.
     - Every new setting of config.json must have a row on the Settings screen (spec settings-screen) in the same change; a change that adds a setting without that row is incomplete. Only the settings listed as exceptions in app-configuration ("Every setting is on the Settings screen") may stay off the screen, and that list may only shrink.
   tasks:
-    - Every task group that changes behavior must include unit-test tasks that add or update tests in tests/ for each added or modified scenario, naming the test file.
+    - Every task group that changes behavior must include unit-test tasks that add or update tests in dashboard/tests/ for each added or modified scenario, naming the test file.
     - A bug fix must include a regression test that fails before the fix.
-    - Finish with a task that runs the full suite (python -m pytest) and verifies it passes.
+    - Finish with a task that runs the full suite (python -m pytest, from dashboard/) and verifies it passes.
     - Anything that cannot be unit tested (real hardware, real audio output) must be called out in its own task with the manual verification to perform.
-    - A task that adds a setting of config.json must also add its Settings screen row and keep tests/test_app_configuration.py (the coverage test) passing.
+    - A task that adds a setting of config.json must also add its Settings screen row and keep dashboard/tests/test_app_configuration.py (the coverage test) passing.
 
 operations:
   apply:

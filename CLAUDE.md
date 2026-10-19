@@ -6,9 +6,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Real-time automotive ECU telemetry dashboard for the Master Injection ECU. It reads data over a Bluetooth serial COM port (Windows), parses semicolon-delimited frames, displays live signal values and graphs, plays audio alarms, logs raw data to CSV, and supports keyboard-driven screen navigation, VE map calibration and on-road ignition tuning.
 
+## Repository layout
+
+```
+dashboard/      the dashboard app (main.py, app/, tests/, resources/, requirements*.txt, pytest.ini, config.json, venvs)
+inclinometer/   the optional inclinometer (Arduino firmware `inclinometro_6500.ino` and its README)
+docs/           images and video used by the READMEs
+openspec/       specs and changes for the whole repository
+.claude/        Claude Code commands and skills
+```
+
+**Everything in this file that is not under `openspec/`, `docs/` or `inclinometer/` is relative to `dashboard/`.** Run the app, `pytest` and the venvs from inside `dashboard/` (`cd dashboard`): `pytest.ini`, `config.json` and the `resources/...` sound paths in it are resolved from there.
+
 ## Running the app
 
 ```
+cd dashboard
 .venv\Scripts\python main.py
 ```
 
@@ -24,6 +37,7 @@ pip install -r requirements-dev.txt   # adds pytest (for the tests)
 **Every feature, behavior change and bug fix ships with unit tests, in the same change.** Code without tests is not done: do not mark a task complete, archive a change, or call work finished until the new tests exist and the whole suite passes.
 
 ```
+cd dashboard
 .venv\Scripts\python -m pytest         # Windows
 .venv-wsl/bin/python -m pytest         # WSL (see "WSL test environment" below)
 ```
@@ -39,9 +53,10 @@ Rules:
 
 ### WSL test environment
 
-The pinned `requirements.txt` needs Python 3.11+, so in WSL (Python 3.10) use a separate venv with unpinned packages:
+The pinned `requirements.txt` needs Python 3.11+, so in WSL (Python 3.10) use a separate venv with unpinned packages, created inside `dashboard/`:
 
 ```
+cd dashboard
 python3 -m venv .venv-wsl
 .venv-wsl/bin/pip install PyQt6 pyqtgraph numpy pyserial pytest
 ```
@@ -56,7 +71,7 @@ python3 -m venv .venv-wsl
 
 ## Configuration (`config.json`)
 
-Settings are loaded from `config.json` in the working directory, or from the file named by the `MI_DASHBOARD_CONFIG_FILE` environment variable. If the file is absent, built-in defaults apply. Sections: `connection`, `alarm`, `datalog`, `dashboard`, `ve_calibration`, `ignition_tuning` (analysed gears are the list `ignition_tuning.gears`), `gyro` (the optional inclinometer port). Keys and defaults are specified in `openspec/specs/app-configuration/spec.md`.
+Settings are loaded from `config.json` in the working directory (`dashboard/config.json`, since the app runs from `dashboard/`), or from the file named by the `MI_DASHBOARD_CONFIG_FILE` environment variable. If the file is absent, built-in defaults apply. Sections: `connection`, `alarm`, `datalog`, `dashboard`, `ve_calibration`, `ignition_tuning` (analysed gears are the list `ignition_tuning.gears`), `gyro` (the optional inclinometer port). Keys and defaults are specified in `openspec/specs/app-configuration/spec.md`.
 
 **The app writes `config.json`.** The Settings screen (F12) saves every change at once with `AppConfig.set_value(section, key, value)`: it re-reads the file, changes only that key and writes the whole file back indented (2 spaces) through a temporary file. Never write the file any other way, and in tests never let a save reach a real file (`tests/conftest.py` already points the singleton at a temporary path).
 
@@ -65,6 +80,8 @@ Settings are loaded from `config.json` in the working directory, or from the fil
 All signal indices, limits, display formats and graph colors are intentionally hardcoded in `app/masterinjection/signal.py` — this is a personal script.
 
 ## Code layout
+
+Paths relative to `dashboard/`:
 
 ```
 main.py                    wiring and Qt event loop
