@@ -8,7 +8,8 @@ from typing import Optional
 import serial
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from app.gyro.protocol import BAUDRATE, COMMAND_ZERO
+from app.gyro.protocol import (
+    BAUDRATE, CALIBRATION_POSITIONS, COMMAND_CALIBRATION_REPORT, COMMAND_CALIBRATION_RESTORE, COMMAND_ZERO)
 from app.gyro.state import GyroState, GyroStatus
 
 logger = logging.getLogger(__name__)
@@ -89,6 +90,20 @@ class GyroConnection(QObject):
     def zero(self) -> bool:
         """Ask the device to take the current position as flat. False when the port is not open."""
         return self._send(COMMAND_ZERO)
+
+    def capture(self, position: str) -> bool:
+        """Ask the device to capture one calibration position (one of CALIBRATION_POSITIONS). False when not sent."""
+        if position not in CALIBRATION_POSITIONS:
+            raise ValueError(f"Not a calibration position: {position!r}")
+        return self._send(position)
+
+    def request_calibration(self) -> bool:
+        """Ask the device to report the calibration it uses. False when the port is not open."""
+        return self._send(COMMAND_CALIBRATION_REPORT)
+
+    def restore_calibration(self) -> bool:
+        """Ask the device to go back to offset 0 and gain 1. False when the port is not open."""
+        return self._send(COMMAND_CALIBRATION_RESTORE)
 
     def _send(self, command: str) -> bool:
         if not self.is_open():
@@ -191,7 +206,7 @@ class GyroConnection(QObject):
 
     def _announce(self):
         snap = self.state.snapshot()
-        key = (snap.status, snap.message)
+        key = (snap.status, snap.message, snap.calibration)
         if key != self._announced:
             self._announced = key
             self.state_changed.emit()

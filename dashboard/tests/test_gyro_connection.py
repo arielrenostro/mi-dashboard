@@ -1,8 +1,14 @@
 """Spec: openspec/specs/gyro-connection (the optional inclinometer)."""
 import pytest
 
-from app.gyro.protocol import GyroCommandReply, GyroHeader, GyroMessage, GyroReading, parse_line
-from app.gyro.state import GyroState, GyroStatus
+from app.gyro.protocol import (
+    CALIBRATION_POSITIONS, COMMANDS, GyroCalibrationReport, GyroCommandReply, GyroHeader, GyroMessage, GyroReading,
+    parse_line)
+from app.gyro.state import CalibrationProgress, GyroState, GyroStatus
+
+REPORT = "#K;OFFSET;0.0100;-0.0200;-0.3450;SCALE;1.0000;1.0000;1.0350;"
+SAVED = "#M;CALIBRACAO_SALVA;"
+INVALID = "#M;CALIBRACAO_INVALIDA_REPITA_AS_POSICOES;"
 
 DATA = "#D;12840;1.37;-0.62;-0.024;-0.011;1.000;31.4;"
 HEADER = "#H;t_ms;pitch;roll;ax_g;ay_g;az_g;temp_c;"
@@ -93,6 +99,41 @@ def test_command_reply_with_the_wrong_shape_is_ignored(line):
 def test_replies_of_the_retired_commands_are_ignored(line):
     """Scenario: Retired replies."""
     assert parse_line(line) is None
+
+
+@pytest.mark.parametrize("command", CALIBRATION_POSITIONS + ("#KP", "#KR"))
+def test_calibration_reply_carries_the_command_and_its_status(command):
+    """Scenario: Calibration reply."""
+    assert parse_line(f"{command};OK;") == GyroCommandReply(command, "OK")
+
+
+@pytest.mark.parametrize("line", ["#KQU;OK;", "#KZX;OK;", "#KZU;OK;EXTRA;", "#KZU;", "#KZ;OK;", "#KZUU;OK;"])
+def test_calibration_reply_with_an_unknown_command_or_shape_is_ignored(line):
+    """Scenarios: Calibration reply with an unknown axis, Command reply with the wrong shape."""
+    assert parse_line(line) is None
+
+
+def test_calibration_report_carries_offsets_and_gains():
+    """Scenario: Calibration report."""
+    assert parse_line(REPORT) == GyroCalibrationReport((0.01, -0.02, -0.345), (1.0, 1.0, 1.035))
+
+
+@pytest.mark.parametrize("line", [
+    "#K;OFFSET;0.01;-0.02;-0.345;SCALE;1.0;1.0;",
+    "#K;SCALE;1.0;1.0;1.035;OFFSET;0.01;-0.02;-0.345;",
+    "#K;OFFSET;0.01;-0.02;nan;SCALE;1.0;1.0;1.035;",
+    "#K;OFFSET;0.01;-0.02;abc;SCALE;1.0;1.0;1.035;",
+    "#K;OFFSET;0.01;-0.02;-0.345;SCALE;1.0;1.0;1.035;9;",
+    "#K;",
+])
+def test_calibration_report_with_the_wrong_shape_is_ignored(line):
+    """Scenario: Calibration report with the wrong shape."""
+    assert parse_line(line) is None
+
+
+def test_the_app_commands_are_the_zero_and_the_calibration_ones():
+    """Scenario: No other command."""
+    assert COMMANDS == ("#Z", "#KZU", "#KZD", "#KXU", "#KXD", "#KYU", "#KYD", "#KP", "#KR")
 
 
 # ── State: helpers ───────────────────────────────────────────────────────────────────────────────────────
@@ -269,6 +310,143 @@ def test_reconnecting_loses_the_zero(state, clock):
     stream(state, clock)
 
     assert state.snapshot().status is GyroStatus.NOT_ZEROED
+
+
+# ── Calibration acknowledgements, progress and the zero ──────────────────────────────────────────────────
+
+def test_calibration_reply_is_the_latest_message(state):
+    """Scenario: Capture acknowledged as message."""
+    state.feed("#KZU;OK;")
+
+    assert state.snapshot().message == "KZU: OK"
+
+
+@pytest.mark.parametrize("line, message", [("#KZU;ERRO;", "KZU: ERRO"), ("#KZU;ok;", "KZU: ok")])
+def test_calibration_reply_that_is_not_ok_only_updates_the_message(state, line, message):
+    """Scenarios: Unknown status, Not case folded (calibration)."""
+    state.feed(line)
+
+    snap = state.snapshot()
+    assert snap.message == message and snap.calibration == CalibrationProgress()
+
+
+def test_capture_replies_are_collected(state):
+    """Scenario: Capture acknowledged."""
+    state.feed("#KZU;OK;")
+    state.feed("#KZD;OK;")
+
+    progress = state.snapshot().calibration
+    assert progress.acknowledged == {"#KZU", "#KZD"} and progress.outcome is None
+
+
+def test_calibration_saved_sets_the_outcome_and_clears_the_captures(state):
+    """Scenario: Calibration saved."""
+    for command in CALIBRATION_POSITIONS:
+        state.feed(f"{command};OK;")
+    state.feed(SAVED)
+    state.feed(REPORT)
+
+    progress = state.snapshot().calibration
+    assert progress.outcome == "saved" and progress.acknowledged == frozenset()
+    assert progress.report == GyroCalibrationReport((0.01, -0.02, -0.345), (1.0, 1.0, 1.035))
+    assert state.snapshot().message == "CALIBRACAO_SALVA"
+
+
+def test_invalid_calibration_sets_the_outcome_and_keeps_the_report(state):
+    """Scenario: Calibration invalid."""
+    state.feed(REPORT)
+    for command in CALIBRATION_POSITIONS:
+        state.feed(f"{command};OK;")
+    state.feed(INVALID)
+
+    progress = state.snapshot().calibration
+    assert progress.outcome == "invalid" and progress.acknowledged == frozenset()
+    assert progress.report == GyroCalibrationReport((0.01, -0.02, -0.345), (1.0, 1.0, 1.035))
+
+
+def test_a_new_capture_clears_the_outcome(state):
+    """Scenario: New capture clears the outcome."""
+    state.feed(SAVED)
+
+    state.feed("#KXU;OK;")
+
+    progress = state.snapshot().calibration
+    assert progress.outcome is None and progress.acknowledged == {"#KXU"}
+
+
+def test_report_requested_changes_only_the_report(state):
+    """Scenario: Report requested."""
+    state.feed("#KZU;OK;")
+    state.feed("#KP;OK;")
+    state.feed(REPORT)
+
+    progress = state.snapshot().calibration
+    assert progress.report is not None and progress.acknowledged == {"#KZU"} and progress.outcome is None
+
+
+def test_restore_clears_the_captures_and_the_outcome(state):
+    """Scenario: Restored."""
+    state.feed("#KZU;OK;")
+    state.feed(SAVED)
+    state.feed("#KZU;OK;")
+
+    state.feed("#KR;OK;")
+
+    progress = state.snapshot().calibration
+    assert progress.acknowledged == frozenset() and progress.outcome is None
+
+
+def test_reconnecting_forgets_the_calibration_progress(state):
+    """Scenario: Port reopened."""
+    state.feed("#KZU;OK;")
+    state.feed(SAVED)
+    state.feed(REPORT)
+
+    state.closed()
+    state.opened()
+
+    assert state.snapshot().calibration == CalibrationProgress()
+
+
+def test_calibration_saved_clears_the_zero(state, clock):
+    """Scenario: Calibration saved (Zero flag)."""
+    state.feed("#Z;OK;")
+    state.feed(data())
+
+    state.feed(SAVED)
+    state.feed(data(13000))
+
+    assert state.status() is GyroStatus.NOT_ZEROED
+
+
+def test_calibration_restored_clears_the_zero(state):
+    """Scenario: Calibration restored."""
+    state.feed("#Z;OK;")
+    state.feed(data())
+
+    state.feed("#KR;OK;")
+    state.feed(data(13000))
+
+    assert state.status() is GyroStatus.NOT_ZEROED
+
+
+@pytest.mark.parametrize("line", [INVALID, "#KZU;OK;", "#KP;OK;", REPORT])
+def test_calibration_lines_that_change_nothing_in_the_device_keep_the_zero(state, line):
+    """Scenarios: Calibration invalid, Calibration capture (Zero flag)."""
+    state.feed("#Z;OK;")
+    state.feed(data())
+
+    state.feed(line)
+    state.feed(data(13000))
+
+    assert state.status() is GyroStatus.USABLE
+
+
+def test_calibration_text_is_also_the_latest_message(state):
+    """Scenario: Calibration text is also a message."""
+    state.feed(INVALID)
+
+    assert state.snapshot().message == "CALIBRACAO_INVALIDA_REPITA_AS_POSICOES"
 
 
 # ── Data stream presence ──────────────────────────────────────────────────────────────────────────────────────
@@ -588,12 +766,72 @@ def test_zero_command_is_written_with_a_line_break(ports, clock):
     assert ports.last.written == [b"#Z\n"]
 
 
-def test_the_app_has_no_other_command_than_zero(ports, clock):
-    """Scenario: Zero command. The recalibration (#C) and the zero removal (#R) no longer exist."""
+def test_capture_command_is_written_with_a_line_break(ports, clock):
+    """Scenario: Capture."""
     gyro = make("COM7", ports, clock)
+    gyro.step()
 
-    assert not hasattr(gyro, "recalibrate")
-    assert not hasattr(gyro, "remove_zero")
+    assert gyro.capture("#KZU") is True
+    gyro.step()
+
+    assert ports.last.written == [b"#KZU\n"]
+
+
+def test_report_and_restore_commands_are_written(ports, clock):
+    """Scenarios: Report, Restore."""
+    gyro = make("COM7", ports, clock)
+    gyro.step()
+
+    assert gyro.request_calibration() is True
+    assert gyro.restore_calibration() is True
+    gyro.step()
+
+    assert ports.last.written == [b"#KP\n", b"#KR\n"]
+
+
+def test_capture_refuses_a_command_that_is_not_a_calibration_position(ports, clock):
+    """Scenario: No other command."""
+    gyro = make("COM7", ports, clock)
+    gyro.step()
+
+    for command in ("#Z", "#C", "#R", "#KP", "#KQU"):
+        with pytest.raises(ValueError):
+            gyro.capture(command)
+    gyro.step()
+
+    assert ports.last.written == []
+    assert not hasattr(gyro, "recalibrate") and not hasattr(gyro, "remove_zero")
+
+
+def test_calibration_commands_with_the_port_closed_are_dropped(ports, clock):
+    """Scenario: Port closed (calibration commands)."""
+    gyro = make("COM3", ports, clock)
+    gyro.step()
+
+    assert gyro.capture("#KZU") is False
+    assert gyro.request_calibration() is False
+    assert gyro.restore_calibration() is False
+    ports.available.add("COM3")
+    clock.advance(3)
+    gyro.step()
+
+    assert ports.last.written == []
+
+
+def test_sending_a_calibration_command_changes_no_state(ports, clock):
+    """Scenario: Sending changes nothing (calibration)."""
+    gyro = make("COM7", ports, clock)
+    gyro.step()
+    ports.last.lines.extend(["#Z;OK;", data(100)])
+    gyro.step()
+    gyro.step()
+
+    gyro.capture("#KZU")
+    gyro.step()
+
+    snap = gyro.snapshot()
+    assert ports.last.written == [b"#KZU\n"]
+    assert snap.status is GyroStatus.USABLE and snap.calibration == CalibrationProgress()
 
 
 def test_sending_a_command_changes_no_state(ports, clock):
@@ -665,6 +903,25 @@ def test_a_state_change_is_announced_once(ports, clock):
     gyro.step()
 
     assert announced == [GyroStatus.USABLE]
+
+
+def test_a_calibration_change_is_announced_once(ports, clock):
+    """Scenario: Change announced."""
+    gyro = make("COM7", ports, clock)
+    announced = []
+    gyro.state_changed.connect(lambda: announced.append(gyro.snapshot().calibration.report))
+    gyro.step()
+    ports.last.lines.append(data(0))
+    gyro.step()
+    announced.clear()
+
+    ports.last.lines.append(REPORT)
+    gyro.step()
+    for i in range(5):
+        ports.last.lines.append(data(10 + i))
+        gyro.step()
+
+    assert announced == [GyroCalibrationReport((0.01, -0.02, -0.345), (1.0, 1.0, 1.035))]
 
 
 def test_data_lines_are_not_announced(ports, clock):

@@ -7,14 +7,22 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QLabel
 
 from app.config import AppConfig
-from app.gyro.protocol import GyroReading
-from app.gyro.state import GyroSnapshot, GyroStatus
+from app.gyro.protocol import GyroCalibrationReport, GyroReading
+from app.gyro.state import CalibrationProgress, GyroSnapshot, GyroStatus
 from app.ui.settings.screen import HINT, SettingsScreen
 from tests.helpers import key_press
 
-PORT, CONNECT, ZERO, TILT, RPM_MIN, RPM_MAX, SETTLE, MIN_TIME = range(8)
+PORT, CONNECT, ZERO, CALIBRATE, VIEW, RESTORE, TILT, RPM_MIN, RPM_MAX, SETTLE, MIN_TIME = range(11)
 
 READING = GyroReading(t_ms=1, pitch=1.37, roll=-0.62, ax_g=0, ay_g=0, az_g=1, temp_c=31.4)
+
+
+class Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
 
 
 class FakeGyro:
@@ -24,13 +32,33 @@ class FakeGyro:
         self.status = GyroStatus.DISABLED
         self.reading = None
         self.message = ""
+        self.calibration = CalibrationProgress()
         self.open = False
         self.user_closed = False
         self.calls = []
 
     def snapshot(self):
         pitch = self.reading.pitch if self.status is GyroStatus.USABLE and self.reading else None
-        return GyroSnapshot(self.status, pitch, self.reading, self.message)
+        return GyroSnapshot(self.status, pitch, self.reading, self.message, self.calibration)
+
+    def plug(self):
+        """A device that is connected (and not zeroed)."""
+        self.open, self.status = True, GyroStatus.NOT_ZEROED
+
+    def unplug(self):
+        self.open, self.status = False, GyroStatus.DISCONNECTED
+
+    def capture(self, position):
+        self.calls.append(("capture", position))
+        return self.open
+
+    def request_calibration(self):
+        self.calls.append(("request_calibration",))
+        return self.open
+
+    def restore_calibration(self):
+        self.calls.append(("restore_calibration",))
+        return self.open
 
     def is_open(self):
         return self.open
@@ -73,6 +101,14 @@ class Env:
     def label(self, index):
         return self.screen.row_texts()[index][0]
 
+    def tick(self):
+        """The screen's periodic refresh (the wizard follows the device from it)."""
+        self.screen._timer.timeout.emit()
+
+    def device_says(self, acknowledged=(), outcome=None, report=None):
+        self.gyro.calibration = CalibrationProgress(frozenset(acknowledged), outcome, report)
+        self.tick()
+
     def saved(self):
         return json.loads(self.path.read_text(encoding="utf-8"))
 
@@ -83,9 +119,13 @@ def env(qapp, tmp_path):
     settings = AppConfig({}, str(path))
     gyro = FakeGyro()
     ports = ["COM3", "COM7"]
-    screen = SettingsScreen(close_fn=Mock(), gyro=gyro, settings=settings, list_ports=lambda: list(ports))
+    clock = Clock()
+    screen = SettingsScreen(close_fn=Mock(), gyro=gyro, settings=settings, list_ports=lambda: list(ports),
+                            clock=clock)
     screen.on_activated()
-    yield Env(screen, gyro, settings, path, ports)
+    environment = Env(screen, gyro, settings, path, ports)
+    environment.clock = clock
+    yield environment
     screen.on_deactivated()
 
 
@@ -98,8 +138,8 @@ def test_initial_content(env):
     assert "Configurações" in texts and "Giroscópio" in texts and "Ajuste de Ignição" in texts
     assert HINT in texts and HINT == "↑↓ Navegar | ←→ Alterar | Enter Executar | Esc Voltar"
     assert [label for label, _ in env.screen.row_texts()] == [
-        "Porta", "Conectar", "Zerar inclinação", "Inclinação máxima", "RPM mínimo",
-        "RPM máximo", "Estabilização", "Tempo mínimo do cenário"]
+        "Porta", "Conectar", "Zerar inclinação", "Calibrar acelerômetro", "Ver calibração", "Restaurar calibração",
+        "Inclinação máxima", "RPM mínimo", "RPM máximo", "Estabilização", "Tempo mínimo do cenário"]
     assert env.screen.selected_index == PORT and env.screen.status_text == ""
 
 
@@ -110,6 +150,17 @@ def test_move_down(env):
     env.press(Qt.Key.Key_Down)
 
     assert env.screen.selected_index == CONNECT
+
+
+def test_the_calibration_rows_follow_the_zero_row(env):
+    """Scenario: Calibration rows in order."""
+    env.select(ZERO)
+    visited = []
+    for _ in range(3):
+        env.press(Qt.Key.Key_Down)
+        visited.append(env.label(env.screen.selected_index))
+
+    assert visited == ["Calibrar acelerômetro", "Ver calibração", "Restaurar calibração"]
 
 
 def test_wrap_at_the_end(env):
@@ -275,11 +326,11 @@ def test_zero_without_a_device(env):
     assert env.screen.status_text == "Giroscópio desconectado"
 
 
-def test_there_is_no_row_to_recalibrate_the_device(env):
+def test_there_is_no_row_to_recalibrate_the_gyroscope(env):
     """Scenario: Zero row. The inclinometer has no gyroscope to calibrate, so the screen has no such row."""
     labels = [label for label, _ in env.screen.row_texts()]
 
-    assert not any("alibr" in label for label in labels)
+    assert "Recalibrar giroscópio" not in labels
     assert not hasattr(env.screen, "_send_recalibration")
 
 
@@ -359,6 +410,381 @@ def test_the_timer_stops_when_the_screen_is_hidden(env):
     env.screen.on_deactivated()
 
     assert not env.screen._timer.isActive()
+
+
+# ── Calibration rows ─────────────────────────────────────────────────────────────────────────────────────
+
+REPORT = GyroCalibrationReport((0.01, -0.02, -0.345), (1.0, 1.0, 1.035))
+STEPS = ["#KZU", "#KZD", "#KXU", "#KXD", "#KYU", "#KYD"]
+
+
+def test_the_calibration_line_shows_the_reported_calibration(env):
+    """Scenario: Calibration reported."""
+    env.gyro.calibration = CalibrationProgress(report=REPORT)
+
+    assert env.screen.readout_lines()[5] == "Calibração: offset +0.010 -0.020 -0.345 | ganho 1.000 1.000 1.035"
+
+
+def test_the_calibration_line_without_a_report(env):
+    """Scenario: No calibration known."""
+    assert env.screen.readout_lines()[5] == "Calibração: --"
+
+
+def test_the_readout_has_six_lines_and_the_first_five_keep_their_places(env):
+    env.gyro.status, env.gyro.reading, env.gyro.message = GyroStatus.USABLE, READING, "Z: OK"
+
+    lines = env.screen.readout_lines()
+
+    assert len(lines) == 6
+    assert lines[0] == "Conectado, zerado" and lines[4] == "Mensagem: Z: OK"
+
+
+def test_the_calibration_line_is_drawn(env):
+    env.gyro.calibration = CalibrationProgress(report=REPORT)
+
+    env.tick()
+
+    texts = [label.text() for label in env.screen.findChildren(QLabel)]
+    assert "Calibração: offset +0.010 -0.020 -0.345 | ganho 1.000 1.000 1.035" in texts
+
+
+def test_the_wizard_opens_from_its_row(env):
+    """Scenario: Open the wizard."""
+    env.gyro.plug()
+    env.select(CALIBRATE)
+
+    env.press(Qt.Key.Key_Return)
+
+    assert env.screen.wizard_open
+    assert env.screen.wizard_lines()[:2] == ["Passo 1 de 6", "Eixo Z para cima. Mantenha a placa parada"]
+
+
+def test_the_wizard_does_not_open_without_a_device(env):
+    """Scenario: Wizard without a device."""
+    env.select(CALIBRATE)
+
+    env.press(Qt.Key.Key_Return)
+
+    assert not env.screen.wizard_open and env.screen.status_text == "Giroscópio desconectado"
+
+
+def test_view_the_calibration_sends_the_report_command(env):
+    """Scenario: View the calibration."""
+    env.gyro.plug()
+    env.select(VIEW)
+
+    env.press(Qt.Key.Key_Return)
+
+    assert env.gyro.calls == [("request_calibration",)] and env.screen.status_text == "Comando enviado"
+
+
+def test_view_the_calibration_without_a_device(env):
+    """Scenario: View without a device."""
+    env.select(VIEW)
+
+    env.press(Qt.Key.Key_Return)
+
+    assert env.screen.status_text == "Giroscópio desconectado"
+
+
+def test_restore_asks_for_confirmation_first(env):
+    """Scenario: Restore asks for confirmation."""
+    env.gyro.plug()
+    env.select(RESTORE)
+
+    env.press(Qt.Key.Key_Return)
+
+    assert env.gyro.calls == [] and env.screen.status_text == "Enter de novo para restaurar"
+
+
+def test_restore_is_sent_by_the_second_enter(env):
+    """Scenario: Restore confirmed."""
+    env.gyro.plug()
+    env.select(RESTORE)
+
+    env.press(Qt.Key.Key_Return)
+    env.press(Qt.Key.Key_Return)
+
+    assert env.gyro.calls == [("restore_calibration",)] and env.screen.status_text == "Comando enviado"
+
+
+def test_restore_needs_a_new_confirmation_after_it_was_sent(env):
+    env.gyro.plug()
+    env.select(RESTORE)
+    env.press(Qt.Key.Key_Return)
+    env.press(Qt.Key.Key_Return)
+
+    env.press(Qt.Key.Key_Return)
+
+    assert env.gyro.calls == [("restore_calibration",)]
+    assert env.screen.status_text == "Enter de novo para restaurar"
+
+
+def test_any_other_key_takes_the_restore_confirmation_back(env):
+    """Scenario: Restore disarmed by another key."""
+    env.gyro.plug()
+    env.select(RESTORE)
+    env.press(Qt.Key.Key_Return)
+
+    env.press(Qt.Key.Key_Down)
+    assert env.screen.status_text == ""
+    env.press(Qt.Key.Key_Up)
+    env.press(Qt.Key.Key_Return)
+    assert env.gyro.calls == [] and env.screen.status_text == "Enter de novo para restaurar"
+    env.press(Qt.Key.Key_Return)
+
+    assert env.gyro.calls == [("restore_calibration",)]
+
+
+def test_left_and_right_take_the_restore_confirmation_back(env):
+    env.gyro.plug()
+    env.select(RESTORE)
+    env.press(Qt.Key.Key_Return)
+
+    env.press(Qt.Key.Key_Left)
+    env.press(Qt.Key.Key_Return)
+
+    assert env.gyro.calls == []
+
+
+def test_leaving_the_screen_takes_the_restore_confirmation_back(env):
+    env.gyro.plug()
+    env.select(RESTORE)
+    env.press(Qt.Key.Key_Return)
+
+    env.screen.on_deactivated()
+    env.screen.on_activated()
+    env.press(Qt.Key.Key_Return)
+
+    assert env.gyro.calls == []
+
+
+def test_restore_without_a_device_is_not_armed(env):
+    """Scenario: Restore without a device."""
+    env.select(RESTORE)
+
+    env.press(Qt.Key.Key_Return)
+    assert env.screen.status_text == "Giroscópio desconectado"
+    env.gyro.plug()
+    env.press(Qt.Key.Key_Return)
+
+    assert env.gyro.calls == [] and env.screen.status_text == "Enter de novo para restaurar"
+
+
+def test_left_and_right_do_nothing_on_the_calibration_rows(env):
+    env.gyro.plug()
+    for row in (CALIBRATE, VIEW, RESTORE):
+        env.select(row)
+        env.press(Qt.Key.Key_Right)
+        env.press(Qt.Key.Key_Left)
+
+    assert env.gyro.calls == [] and env.changed == [] and not env.screen.wizard_open
+
+
+# ── Calibration wizard (on the screen) ───────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def wizard_env(env):
+    env.gyro.plug()
+    env.select(CALIBRATE)
+    env.press(Qt.Key.Key_Return)
+    return env
+
+
+def test_the_wizard_replaces_the_rows(wizard_env):
+    """Scenario: First step."""
+    screen = wizard_env.screen
+    texts = [label.text() for label in screen.findChildren(QLabel) if label.isVisibleTo(screen)]
+
+    assert "Calibrar acelerômetro" in texts and "Passo 1 de 6" in texts
+    assert "Enter Capturar | Esc Cancelar" in texts and HINT not in texts
+    assert "Porta" not in [label.text() for label in screen.findChildren(QLabel) if label.isVisibleTo(screen)]
+    assert not screen._rows_container.isVisibleTo(screen)
+
+
+def test_enter_in_the_wizard_sends_the_capture(wizard_env):
+    """Scenario: Capture sent."""
+    wizard_env.press(Qt.Key.Key_Return)
+
+    assert wizard_env.gyro.calls == [("capture", "#KZU")]
+    assert wizard_env.screen.wizard_lines()[2] == "Capturando…"
+
+
+def test_the_acknowledgement_moves_the_wizard_on(wizard_env):
+    """Scenario: Acknowledgement advances."""
+    wizard_env.press(Qt.Key.Key_Return)
+
+    wizard_env.device_says(["#KZU"])
+
+    assert wizard_env.screen.wizard_lines()[:2] == ["Passo 2 de 6", "Eixo Z para baixo. Mantenha a placa parada"]
+
+
+def test_the_wizard_sends_the_six_positions_in_order(wizard_env):
+    """Scenario: Six steps in order."""
+    acknowledged = []
+    for command in STEPS:
+        wizard_env.press(Qt.Key.Key_Return)
+        acknowledged.append(command)
+        wizard_env.device_says(acknowledged)
+
+    assert [call[1] for call in wizard_env.gyro.calls] == STEPS
+
+
+def test_arrows_do_nothing_in_the_wizard(wizard_env):
+    for key in (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_Left, Qt.Key.Key_Right):
+        wizard_env.press(key)
+
+    assert wizard_env.screen.wizard_open and wizard_env.screen.selected_index == CALIBRATE
+    assert wizard_env.gyro.calls == [] and wizard_env.changed == []
+
+
+def test_a_held_enter_captures_only_once(wizard_env):
+    """Scenario: Held key."""
+    wizard_env.press(Qt.Key.Key_Return)
+    wizard_env.press(Qt.Key.Key_Return, auto_repeat=True)
+
+    assert wizard_env.gyro.calls == [("capture", "#KZU")]
+
+
+def test_a_missing_acknowledgement_is_reported_and_retried(wizard_env):
+    """Scenario: No acknowledgement."""
+    wizard_env.press(Qt.Key.Key_Return)
+    wizard_env.clock.now += 3.5
+    wizard_env.tick()
+    assert wizard_env.screen.wizard_lines()[2] == "Sem resposta do inclinômetro"
+
+    wizard_env.press(Qt.Key.Key_Return)
+
+    assert wizard_env.gyro.calls == [("capture", "#KZU"), ("capture", "#KZU")]
+
+
+def finish(env, outcome, report=None):
+    acknowledged = []
+    for command in STEPS:
+        env.press(Qt.Key.Key_Return)
+        acknowledged.append(command)
+        env.device_says(acknowledged)
+    env.device_says((), outcome, report)
+
+
+def test_the_wizard_waits_for_the_result_after_the_sixth_position(wizard_env):
+    """Scenario: Waiting for the result."""
+    acknowledged = []
+    for command in STEPS:
+        wizard_env.press(Qt.Key.Key_Return)
+        acknowledged.append(command)
+        wizard_env.device_says(acknowledged)
+
+    assert wizard_env.screen.wizard_lines()[2] == "Calculando…"
+
+
+def test_a_saved_calibration_is_shown_and_enter_closes_the_wizard(wizard_env):
+    """Scenario: Calibration saved."""
+    finish(wizard_env, "saved", REPORT)
+
+    lines = wizard_env.screen.wizard_lines()
+    assert lines[2] == "Calibração salva"
+    assert lines[3] == "Calibração: offset +0.010 -0.020 -0.345 | ganho 1.000 1.000 1.035"
+    wizard_env.press(Qt.Key.Key_Return)
+
+    assert not wizard_env.screen.wizard_open
+    assert wizard_env.screen._rows_container.isVisibleTo(wizard_env.screen)
+    wizard_env.screen.close_fn.assert_not_called()
+
+
+def test_an_invalid_calibration_starts_again_with_enter(wizard_env):
+    """Scenario: Calibration invalid."""
+    finish(wizard_env, "invalid")
+    assert wizard_env.screen.wizard_lines()[2] == "Calibração inválida, repita as posições"
+
+    wizard_env.press(Qt.Key.Key_Return)
+
+    assert wizard_env.screen.wizard_lines()[0] == "Passo 1 de 6"
+
+
+def test_an_invalid_calibration_can_be_closed_with_escape(wizard_env):
+    """Scenario: Invalid, then close."""
+    finish(wizard_env, "invalid")
+
+    wizard_env.press(Qt.Key.Key_Escape)
+
+    assert not wizard_env.screen.wizard_open
+    wizard_env.screen.close_fn.assert_not_called()
+
+
+def test_no_result_is_reported(wizard_env):
+    """Scenario: No result."""
+    finish(wizard_env, None)
+    wizard_env.clock.now += 3.5
+    wizard_env.tick()
+
+    assert wizard_env.screen.wizard_lines()[2] == "Sem resultado da calibração"
+    wizard_env.press(Qt.Key.Key_Return)
+    assert wizard_env.screen.wizard_lines()[0] == "Passo 1 de 6"
+
+
+def test_escape_cancels_the_wizard_and_does_not_leave_the_screen(wizard_env):
+    """Scenario: Cancel."""
+    wizard_env.press(Qt.Key.Key_Return)
+    wizard_env.device_says(["#KZU"])
+    wizard_env.press(Qt.Key.Key_Return)
+    wizard_env.device_says(["#KZU", "#KZD"])
+
+    wizard_env.press(Qt.Key.Key_Escape)
+
+    assert not wizard_env.screen.wizard_open
+    assert wizard_env.screen.status_text == "Calibração cancelada"
+    wizard_env.screen.close_fn.assert_not_called()
+    assert wizard_env.screen.row_texts()[0][0] == "Porta"
+
+
+def test_the_wizard_starts_at_step_one_after_a_cancel(wizard_env):
+    """Scenario: Start again after cancelling."""
+    wizard_env.press(Qt.Key.Key_Return)
+    wizard_env.device_says(["#KZU"])
+    wizard_env.press(Qt.Key.Key_Escape)
+
+    wizard_env.select(CALIBRATE)
+    wizard_env.press(Qt.Key.Key_Return)
+
+    assert wizard_env.screen.wizard_lines()[0] == "Passo 1 de 6"
+
+
+def test_escape_leaves_the_screen_again_once_the_wizard_is_closed(wizard_env):
+    """Scenario: Back to Home (after the wizard)."""
+    wizard_env.press(Qt.Key.Key_Escape)
+    wizard_env.press(Qt.Key.Key_Escape)
+
+    wizard_env.screen.close_fn.assert_called_once()
+
+
+def test_a_lost_port_closes_the_wizard(wizard_env):
+    """Scenario: Port lost."""
+    wizard_env.gyro.unplug()
+
+    wizard_env.tick()
+
+    assert not wizard_env.screen.wizard_open
+    assert wizard_env.screen.status_text == "Giroscópio desconectado"
+
+
+def test_leaving_the_screen_abandons_the_wizard(wizard_env):
+    wizard_env.press(Qt.Key.Key_Return)
+    wizard_env.device_says(["#KZU"])
+
+    wizard_env.screen.on_deactivated()
+    wizard_env.screen.on_activated()
+
+    assert not wizard_env.screen.wizard_open
+    assert wizard_env.screen._rows_container.isVisibleTo(wizard_env.screen)
+
+
+def test_other_keys_still_reach_the_window_during_the_wizard(wizard_env):
+    event = key_press(Qt.Key.Key_F1)
+    wizard_env.screen.keyPressEvent(event)
+
+    assert not event.isAccepted()
+    assert wizard_env.screen.wizard_open
 
 
 # ── Numeric rows ─────────────────────────────────────────────────────────────────────────────────────────

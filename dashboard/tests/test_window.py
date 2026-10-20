@@ -495,6 +495,28 @@ def test_enter_on_settings_is_not_announced(window, pressed):
     assert pressed == []
 
 
+def test_keys_in_the_calibration_wizard_are_not_announced(window, pressed):
+    """Scenario: Keys not announced (calibration wizard)."""
+    from unittest.mock import Mock
+    from app.gyro.state import CalibrationProgress, GyroSnapshot, GyroStatus
+
+    window.show_screen("settings")
+    settings = window._screens["settings"]
+    gyro = Mock()
+    gyro.is_open.return_value = True
+    gyro.snapshot.return_value = GyroSnapshot(GyroStatus.NOT_ZEROED, None, None, "", CalibrationProgress())
+    settings._gyro = gyro
+    for _ in range(3):
+        window.keyPressEvent(key_press(Qt.Key.Key_Down))  # Conectar, Zerar inclinação, Calibrar acelerômetro
+    window.keyPressEvent(key_press(Qt.Key.Key_Return))
+    assert settings.wizard_open
+
+    window.keyPressEvent(key_press(Qt.Key.Key_Return))
+    window.keyPressEvent(key_press(Qt.Key.Key_Escape))
+
+    assert pressed == []
+
+
 def test_a_setting_changed_on_the_settings_screen_reaches_the_ignition_screen(window):
     """Spec: a new RPM band is taken by the ignition analysis (wiring between the two screens)."""
     from app.config import config
@@ -502,10 +524,8 @@ def test_a_setting_changed_on_the_settings_screen_reaches_the_ignition_screen(wi
     ignition = window._screens["ignition_tuning"]
     window.show_screen("settings")
     settings = window._screens["settings"]
-    settings.keyPressEvent(key_press(Qt.Key.Key_Down))  # Conectar
-    for _ in range(3):
-        settings.keyPressEvent(key_press(Qt.Key.Key_Down))  # Zerar inclinação ... RPM mínimo
-    settings.keyPressEvent(key_press(Qt.Key.Key_Down))  # RPM máximo
+    for _ in range(8):
+        settings.keyPressEvent(key_press(Qt.Key.Key_Down))  # Conectar ... Restaurar calibração ... RPM máximo
     assert settings.row_texts()[settings.selected_index][0] == "RPM máximo"
 
     settings.keyPressEvent(key_press(Qt.Key.Key_Right))

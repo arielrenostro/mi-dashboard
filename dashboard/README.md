@@ -197,7 +197,11 @@ A slope changes the load the engine needs, so samples taken uphill or downhill a
 
 - The app sends `#Z` and trusts the device's answer (`#Z;OK;`). It never zeroes by itself, and the device keeps the zero.
 - The inclination is **not used** until you zero it again after: the app starts, or the device restarts or reconnects (opening the port restarts many Arduino boards).
-- Zero with the car on level ground. The accelerometer itself is calibrated once on the bench (see the [Inclinometer README](../inclinometer/README.md#accelerometer-calibration)).
+- Zero with the car on level ground. The accelerometer itself is calibrated once per module, on the bench, with the **Calibrar acelerômetro** wizard of the Settings screen (see [Accelerometer calibration](#accelerometer-calibration)). A new calibration clears the zero: zero again afterwards.
+
+#### Accelerometer calibration
+
+Do it once after flashing a module, with the board in your hand (it needs no car). On the Settings screen (**F12**) select **Calibrar acelerômetro** and press **Enter**. The wizard asks for six positions, one at a time: Z up, Z down, X up, X down, Y up, Y down (the axes are printed on the GY-521). Hold the board still in the position shown and press **Enter**; it reads `Capturando…` for about half a second and moves to the next one when the device answers. After the sixth the device computes the offset and gain of each axis and the wizard reads `Calibração salva` (or `Calibração inválida, repita as posições` when a position was wrong: **Enter** starts again). **Esc** cancels at any moment. Afterwards the Settings screen shows the stored values in the `Calibração:` line.
 
 **When the ignition analysis may sample** (only when `gyro.port` is set; with no port nothing changes):
 
@@ -253,12 +257,15 @@ Opened with **F12** (or from the Home menu). Edits `config.json` from the keyboa
 | **Porta** | ← / → | `Nenhuma` or one of the serial ports of the machine (`gyro.port`) |
 | **Conectar** / **Desconectar** | Enter | opens or closes the inclinometer port |
 | **Zerar inclinação** | Enter | sends `#Z`: the device takes the current position as level |
+| **Calibrar acelerômetro** | Enter | opens the six-position calibration wizard (see [Accelerometer calibration](#accelerometer-calibration)); needs the inclinometer connected |
+| **Ver calibração** | Enter | sends `#KP`: the device reports the offsets and gains it uses, shown in the `Calibração:` line |
+| **Restaurar calibração** | Enter, Enter | sends `#KR` (offset 0, gain 1) on the second Enter; any other key cancels. Clears the zero |
 | **Inclinação máxima** | ← / → | `ignition_tuning.max_tilt_deg`, 0.5° steps |
 | **RPM mínimo** / **RPM máximo** | ← / → | the analysed band, 100 rpm steps. Changing it discards the scenarios of the current run (its results file is closed first, with the old band) |
 | **Estabilização** | ← / → | `ignition_tuning.settle_seconds`, 1 s steps |
 | **Tempo mínimo do cenário** | ← / → | `ignition_tuning.min_scenario_seconds`, 5 s steps |
 
-Under the gyroscope rows the screen shows the inclinometer state (`Conectado, zerado`, `Conectado, sem zero`, `Sem sinal`, ...), pitch, roll, temperature and the latest message of the device. How the zero works is described in [Inclinometer](#inclinometer-optional).
+Under the gyroscope rows the screen shows the inclinometer state (`Conectado, zerado`, `Conectado, sem zero`, `Sem sinal`, ...), pitch, roll, temperature, the latest message of the device and the calibration it reported. How the zero works is described in [Inclinometer](#inclinometer-optional).
 
 ### Dashboard Screen
 
@@ -344,7 +351,7 @@ Built to be used while driving, with almost no looking: the driver holds a stead
 | **Esc** | ECU, Settings | Return to Home screen |
 | **↑ / ↓** | Settings | Select a row |
 | **← / →** | Settings | Change the selected value (port, limits, RPM band, times) |
-| **Enter** | Settings | Connect / disconnect, or zero the inclination |
+| **Enter** | Settings | Connect / disconnect, zero the inclination, or run a calibration row; in the calibration wizard, capture the position (Esc cancels it) |
 | **Enter** | ECU | Toggle the phase (Negativa ↔ Positiva), written to the ECU 1 s after the last change, not saved to memory |
 | **↑ / ↓** | VE Calibration | Adjust VE ±5 raw units (0.5 %) at the current operating point (held keys repeat) |
 | **O** | VE Calibration | Send `LAMBDA_LOOP_OPEN` to the ECU + play sound |

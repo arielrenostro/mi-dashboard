@@ -51,7 +51,7 @@ Everything the device sends as text (replies and messages) is **UPPERCASE, witho
 | `#Z;OK;` | device → app | reply (ACK) to the zero command |
 | `#M;<TEXT>;` | device → app | information (see below), shown on the app's Settings screen |
 | `#Z` | app → device | set the zero at the current position |
-| `#K…` | terminal → device | accelerometer calibration (see [below](#accelerometer-calibration)); the app never sends it |
+| `#K…` | app or terminal → device | accelerometer calibration (see [below](#accelerometer-calibration)); the app sends it from the Settings screen wizard |
 
 Commands are the text followed by `\n`; the device upper-cases what it receives and answers `#M;COMANDO_DESCONHECIDO;` to anything else, including the old `#C` (gyroscope recalibration) and `#R` (remove the zero), which no longer exist.
 
@@ -101,7 +101,9 @@ Information only, never a state change; the app keeps the latest text for displa
 
 ## Accelerometer calibration
 
-Do it once after flashing a module, on the bench, with a serial terminal at 115200 (the Arduino IDE serial monitor, set to "Newline"). It finds the offset and gain of each axis and stores them in the board's EEPROM, so they survive a reset.
+Do it once after flashing a module. It finds the offset and gain of each axis and stores them in the board's EEPROM, so they survive a reset. The easy way is the **Calibrar acelerômetro** wizard on the dashboard's Settings screen ([Dashboard README](../dashboard/README.md#accelerometer-calibration)), which sends the commands below, waits for each answer and shows the result; **Ver calibração** sends `#KP` and **Restaurar calibração** sends `#KR`. A saved or restored calibration makes the app forget the zero (the device keeps the pitch and roll zero it took with the old calibration), so zero again.
+
+The same commands can be typed in a serial terminal at 115200 (the Arduino IDE serial monitor, set to "Newline"), with the dashboard disconnected from the port.
 
 Put the board on a flat surface, **still**, with the axis below pointing **up** (`U`) or **down** (`D`), and send the command. Each one averages about 0.5 s and answers `#K<axis><sense>;OK;`:
 

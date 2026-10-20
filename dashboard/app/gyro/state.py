@@ -5,7 +5,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Optional
 
-from app.gyro.protocol import COMMAND_ZERO, GyroCommandReply, GyroHeader, GyroMessage, GyroReading, STATUS_OK, parse_line
+from app.gyro.protocol import (
+    CALIBRATION_POSITIONS, COMMAND_CALIBRATION_RESTORE, COMMAND_ZERO, GyroCalibrationReport, GyroCommandReply,
+    GyroHeader, GyroMessage, GyroReading, MESSAGE_CALIBRATION_INVALID, MESSAGE_CALIBRATION_SAVED, STATUS_OK, parse_line)
 
 # More than this without a valid data line (the device sends 100 per second) is "no signal".
 NO_SIGNAL_SECONDS = 1.0
@@ -19,12 +21,25 @@ class GyroStatus(enum.Enum):
     USABLE = "usable"
 
 
+OUTCOME_SAVED = "saved"
+OUTCOME_INVALID = "invalid"
+
+
+@dataclass(frozen=True)
+class CalibrationProgress:
+    """Where the accelerometer calibration stands, from the device's answers only."""
+    acknowledged: frozenset = frozenset()  # capture commands the device answered OK since the last end of a run
+    outcome: Optional[str] = None  # OUTCOME_SAVED / OUTCOME_INVALID of the latest run, None while it is open
+    report: Optional[GyroCalibrationReport] = None  # the latest `#K;OFFSET;…` line
+
+
 @dataclass(frozen=True)
 class GyroSnapshot:
     status: GyroStatus
     pitch: Optional[float]  # only while USABLE
     reading: Optional[GyroReading]  # the latest valid data line, whatever the status
-    message: str  # the latest `#M` text
+    message: str  # the latest `#M` text or command reply
+    calibration: CalibrationProgress = CalibrationProgress()
 
 
 class GyroState:
@@ -49,6 +64,9 @@ class GyroState:
         self._last_t_ms: Optional[float] = None
         self._reading: Optional[GyroReading] = None
         self._message = ""
+        self._acknowledged: frozenset = frozenset()
+        self._outcome: Optional[str] = None
+        self._report: Optional[GyroCalibrationReport] = None
 
     # ── Port events ──────────────────────────────────────────────────────────
 
@@ -90,14 +108,37 @@ class GyroState:
                 self._zeroed = False  # sent once after the device starts
                 self._last_t_ms = None
             elif isinstance(parsed, GyroMessage):
-                self._message = parsed.text  # free text: shown, never a state change
+                self._apply_message(parsed.text)
             elif isinstance(parsed, GyroCommandReply):
                 self._apply_reply(parsed)
+            elif isinstance(parsed, GyroCalibrationReport):
+                self._report = parsed
+
+    def _apply_message(self, text: str):
+        self._message = text  # free text: shown, and only the two calibration texts act on the state
+        if text == MESSAGE_CALIBRATION_SAVED:
+            self._end_calibration(OUTCOME_SAVED)
+            self._zeroed = False  # the device keeps a zero taken with the old calibration
+        elif text == MESSAGE_CALIBRATION_INVALID:
+            self._end_calibration(OUTCOME_INVALID)
+
+    def _end_calibration(self, outcome: str):
+        self._acknowledged = frozenset()
+        self._outcome = outcome
 
     def _apply_reply(self, reply: GyroCommandReply):
         self._message = reply.text
-        if (reply.command, reply.status) == (COMMAND_ZERO, STATUS_OK):
+        if reply.status != STATUS_OK:
+            return
+        if reply.command == COMMAND_ZERO:
             self._zeroed = True
+        elif reply.command in CALIBRATION_POSITIONS:
+            self._acknowledged |= {reply.command}
+            self._outcome = None
+        elif reply.command == COMMAND_CALIBRATION_RESTORE:
+            self._acknowledged = frozenset()
+            self._outcome = None
+            self._zeroed = False  # the restore changes the calibration the zero was taken with
 
     # ── Queries ──────────────────────────────────────────────────────────────
 
@@ -105,7 +146,8 @@ class GyroState:
         with self._lock:
             status = self._status(self._clock())
             pitch = self._reading.pitch if status is GyroStatus.USABLE else None
-            return GyroSnapshot(status, pitch, self._reading, self._message)
+            calibration = CalibrationProgress(self._acknowledged, self._outcome, self._report)
+            return GyroSnapshot(status, pitch, self._reading, self._message, calibration)
 
     def status(self) -> GyroStatus:
         with self._lock:

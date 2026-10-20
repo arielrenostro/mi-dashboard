@@ -93,8 +93,8 @@ app/log_writer/            CSV LogWriter (own thread)
 app/ui/                    AppWindow, Home, Dashboard, VE calibration, ignition tuning (per-gear analysis,
                            IgnitionResultsLog CSV snapshot in datalog.path), SignalCard
 app/ui/options/            OptionsScreen (shown as "ECU": engine phase) and PhaseWriteController (read-modify-write of #X02, never #D04)
-app/ui/settings/           SettingsScreen (F12): edits config.json settings, connects / zeroes the inclinometer
-app/gyro/                  optional inclinometer: protocol parser, GyroState (zero flag, status), GyroConnection (serial thread)
+app/ui/settings/           SettingsScreen (F12): edits config.json settings, connects / zeroes / calibrates the inclinometer
+app/gyro/                  optional inclinometer: protocol parser, GyroState (zero flag, status, calibration progress), GyroConnection (serial thread)
 app/ui/common/             RowWriteController (debounced row-by-row map write, shared by VE and ignition)
 app/config.py              config.json loader and saver
 ```
