@@ -10,8 +10,6 @@ from app.config import AppConfig, config
 from app.gyro import get_gyro
 from app.gyro.ports import list_serial_ports
 from app.gyro.state import GyroStatus
-from app.masterinjection.signal import Signal
-from app.state.state import vehicle_state
 from app.ui.base.screen import Screen
 
 HINT = "↑↓ Navegar | ←→ Alterar | Enter Executar | Esc Voltar"
@@ -22,12 +20,10 @@ STATUS_NOT_SAVED = "Não foi possível gravar a configuração"
 STATUS_CHOOSE_PORT = "Escolha uma porta"
 STATUS_SENT = "Comando enviado"
 STATUS_NOT_CONNECTED = "Giroscópio desconectado"
-STATUS_STOP_THE_CAR = "Pare o carro para recalibrar"
 
 _STATE_TEXTS = {
     GyroStatus.DISABLED: "Desligado",
     GyroStatus.DISCONNECTED: "Desconectado",
-    GyroStatus.CALIBRATING: "Calibrando…",
     GyroStatus.NO_SIGNAL: "Sem sinal",
     GyroStatus.NOT_ZEROED: "Conectado, sem zero",
     GyroStatus.USABLE: "Conectado, zerado",
@@ -91,13 +87,13 @@ SETTINGS_BACKLOG = frozenset({
     "ignition_tuning.resume_sound", "ignition_tuning.discard_sound",
 })
 
-_PORT, _CONNECT, _ZERO, _RECALIBRATE = "port", "connect", "zero", "recalibrate"
+_PORT, _CONNECT, _ZERO = "port", "connect", "zero"
 
 
 class SettingsScreen(Screen):
     """
     Settings edited from the keyboard, saved to config.json at once, and the controls of the inclinometer
-    (port, connect, zero, recalibrate) with its live readout.
+    (port, connect, zero) with its live readout.
     """
 
     # (section, key) of a setting that was changed here, after it was applied and saved.
@@ -113,7 +109,7 @@ class SettingsScreen(Screen):
         self._status = ""
 
         # The selectable rows, in order: the gyroscope ones, then one per numeric setting.
-        self._rows: list = [_PORT, _CONNECT, _ZERO, _RECALIBRATE, *NUMBER_ROWS]
+        self._rows: list = [_PORT, _CONNECT, _ZERO, *NUMBER_ROWS]
         self._selected = 0
 
         self.setStyleSheet("background-color:black;")
@@ -243,7 +239,6 @@ class SettingsScreen(Screen):
             _PORT: "Porta",
             _CONNECT: "Desconectar" if self._connected() else "Conectar",
             _ZERO: "Zerar inclinação",
-            _RECALIBRATE: "Recalibrar giroscópio",
         }[row]
 
     def _value(self, row) -> str:
@@ -312,13 +307,6 @@ class SettingsScreen(Screen):
     def _send_zero(self):
         self._set_status(STATUS_SENT if self._gyro.zero() else STATUS_NOT_CONNECTED)
 
-    def _send_recalibration(self):
-        speed = vehicle_state.get(Signal.VSS)
-        if speed is not None and speed.value > 0:
-            self._set_status(STATUS_STOP_THE_CAR)
-            return
-        self._set_status(STATUS_SENT if self._gyro.recalibrate() else STATUS_NOT_CONNECTED)
-
     # ── Numeric settings ─────────────────────────────────────────────────────
 
     def _change_number(self, row: NumberRow, direction: int):
@@ -358,8 +346,6 @@ class SettingsScreen(Screen):
                 self._toggle_connection()
             elif row == _ZERO:
                 self._send_zero()
-            elif row == _RECALIBRATE:
-                self._send_recalibration()
         elif key == Qt.Key.Key_Escape:
             self.close_fn()
             return

@@ -185,7 +185,7 @@ Built for the road: hold a steady RPM in a fixed gear and read, column by column
 
 ### Inclinometer (optional)
 
-A slope changes the load the engine needs, so samples taken uphill or downhill are not comparable with samples taken on the flat. An optional inclinometer (an Arduino with an MPU-6500, serial 115200 8N1, 100 Hz) tells the ignition tuning screen when the car is not level.
+A slope changes the load the engine needs, so samples taken uphill or downhill are not comparable with samples taken on the flat. An optional inclinometer (an Arduino with an accelerometer module such as the GY-521, serial 115200 8N1, 100 Hz) tells the ignition tuning screen when the car is not level.
 
 **Setting it up**
 
@@ -195,13 +195,13 @@ A slope changes the load the engine needs, so samples taken uphill or downhill a
 
 **The zero is always manual**
 
-- The app sends `#Z` and trusts the device's answer (`#M;Zero definido;`). It never zeroes by itself, and the device keeps the zero.
-- The inclination is **not used** until you zero it again after: the app starts, the device restarts or reconnects (opening the port restarts many Arduino boards), or a gyroscope recalibration.
-- **Recalibrar giroscópio** (`#C`) is only sent with the car stopped.
+- The app sends `#Z` and trusts the device's answer (`#Z;OK;`). It never zeroes by itself, and the device keeps the zero.
+- The inclination is **not used** until you zero it again after: the app starts, or the device restarts or reconnects (opening the port restarts many Arduino boards).
+- Zero with the car on level ground. The accelerometer itself is calibrated once on the bench (see the [Inclinometer README](../inclinometer/README.md#accelerometer-calibration)).
 
 **When the ignition analysis may sample** (only when `gyro.port` is set; with no port nothing changes):
 
-- the inclinometer is connected and sending, not calibrating, and zeroed
+- the inclinometer is connected and sending, and zeroed
 - `|pitch|` is within `ignition_tuning.max_tilt_deg` (default `3`°)
 - after the car is level again, samples are discarded for `ignition_tuning.settle_seconds`, so the stretch of road that tilted the car never enters a column
 
@@ -213,11 +213,10 @@ A slope changes the load the engine needs, so samples taken uphill or downhill a
 | `Inclinação: +4.5° ↓` | red | usable, above the limit | `INCLINADO` |
 | `Inclinação: sem zero (G)` | orange | connected, not zeroed | `AGUARDANDO SENSOR` |
 | `Inclinação: sem sinal` | orange | no data for more than 1 s | `AGUARDANDO SENSOR` |
-| `Inclinação: calibrando…` | orange | the device is recalibrating | `AGUARDANDO SENSOR` |
 | `Inclinação: desconectada` | orange | port configured but not open | `AGUARDANDO SENSOR` |
 | `Inclinação: desligada` | gray | no `gyro.port` | not used |
 
-**The device and its protocol** (serial lines `#D`, `#H`, `#M`, commands `#Z`, `#C`) are described in the [Inclinometer README](../inclinometer/README.md).
+**The device and its protocol** (serial lines `#D`, `#H`, `#M`, command `#Z` and its reply) are described in the [Inclinometer README](../inclinometer/README.md).
 
 ---
 
@@ -254,7 +253,6 @@ Opened with **F12** (or from the Home menu). Edits `config.json` from the keyboa
 | **Porta** | ← / → | `Nenhuma` or one of the serial ports of the machine (`gyro.port`) |
 | **Conectar** / **Desconectar** | Enter | opens or closes the inclinometer port |
 | **Zerar inclinação** | Enter | sends `#Z`: the device takes the current position as level |
-| **Recalibrar giroscópio** | Enter | sends `#C`; refused while the car is moving |
 | **Inclinação máxima** | ← / → | `ignition_tuning.max_tilt_deg`, 0.5° steps |
 | **RPM mínimo** / **RPM máximo** | ← / → | the analysed band, 100 rpm steps. Changing it discards the scenarios of the current run (its results file is closed first, with the old band) |
 | **Estabilização** | ← / → | `ignition_tuning.settle_seconds`, 1 s steps |
@@ -318,7 +316,7 @@ Built to be used while driving, with almost no looking: the driver holds a stead
   |--------|---------|
   | `PAUSADO` | paused with **Space** |
   | `AGUARDANDO ECU` | the ignition map has not been received yet |
-  | `AGUARDANDO SENSOR` | `gyro.port` is set but the inclinometer is not usable (not zeroed, no signal, calibrating, disconnected) |
+  | `AGUARDANDO SENSOR` | `gyro.port` is set but the inclinometer is not usable (not zeroed, no signal, disconnected) |
   | `INCLINADO` | the slope is above `max_tilt_deg` |
   | `ESTABILIZANDO` | samples are discarded after a write, a resume, the lambda loop closing again or the car becoming level again (`settle_seconds`) |
   | `FORA DA FAIXA` | RPM, gear or lambda loop outside the conditions |
@@ -346,7 +344,7 @@ Built to be used while driving, with almost no looking: the driver holds a stead
 | **Esc** | ECU, Settings | Return to Home screen |
 | **↑ / ↓** | Settings | Select a row |
 | **← / →** | Settings | Change the selected value (port, limits, RPM band, times) |
-| **Enter** | Settings | Connect / disconnect, zero the inclination or recalibrate the gyroscope |
+| **Enter** | Settings | Connect / disconnect, or zero the inclination |
 | **Enter** | ECU | Toggle the phase (Negativa ↔ Positiva), written to the ECU 1 s after the last change, not saved to memory |
 | **↑ / ↓** | VE Calibration | Adjust VE ±5 raw units (0.5 %) at the current operating point (held keys repeat) |
 | **O** | VE Calibration | Send `LAMBDA_LOOP_OPEN` to the ECU + play sound |

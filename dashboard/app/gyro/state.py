@@ -5,21 +5,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Optional
 
-from app.gyro.protocol import (
-    GyroHeader, GyroMessage, GyroReading, MESSAGE_CALIBRATING, MESSAGE_CALIBRATION_OK, MESSAGE_ZERO_REMOVED,
-    MESSAGE_ZERO_SET, parse_line,
-)
+from app.gyro.protocol import COMMAND_ZERO, GyroCommandReply, GyroHeader, GyroMessage, GyroReading, STATUS_OK, parse_line
 
 # More than this without a valid data line (the device sends 100 per second) is "no signal".
 NO_SIGNAL_SECONDS = 1.0
-# The device stops streaming while it recalibrates (about 2 s); after this long without `Calibracao ok` the app gives up.
-CALIBRATION_SECONDS = 10.0
 
 
 class GyroStatus(enum.Enum):
     DISABLED = "disabled"
     DISCONNECTED = "disconnected"
-    CALIBRATING = "calibrating"
     NO_SIGNAL = "no signal"
     NOT_ZEROED = "not zeroed"
     USABLE = "usable"
@@ -51,7 +45,6 @@ class GyroState:
     def _reset_link(self):
         self._opened_at: Optional[float] = None
         self._zeroed = False
-        self._calibrating_since: Optional[float] = None
         self._last_data_at: Optional[float] = None
         self._last_t_ms: Optional[float] = None
         self._reading: Optional[GyroReading] = None
@@ -95,22 +88,16 @@ class GyroState:
                 self._reading = parsed
             elif isinstance(parsed, GyroHeader):
                 self._zeroed = False  # sent once after the device starts
-                self._calibrating_since = None
                 self._last_t_ms = None
             elif isinstance(parsed, GyroMessage):
-                self._apply_message(parsed.text, now)
+                self._message = parsed.text  # free text: shown, never a state change
+            elif isinstance(parsed, GyroCommandReply):
+                self._apply_reply(parsed)
 
-    def _apply_message(self, text: str, now: float):
-        self._message = text
-        if text == MESSAGE_ZERO_SET:
+    def _apply_reply(self, reply: GyroCommandReply):
+        self._message = reply.text
+        if (reply.command, reply.status) == (COMMAND_ZERO, STATUS_OK):
             self._zeroed = True
-        elif text == MESSAGE_ZERO_REMOVED:
-            self._zeroed = False
-        elif text == MESSAGE_CALIBRATING:
-            self._zeroed = False
-            self._calibrating_since = now
-        elif text == MESSAGE_CALIBRATION_OK:
-            self._calibrating_since = None  # the zero is not assumed to survive: the user zeroes again
 
     # ── Queries ──────────────────────────────────────────────────────────────
 
@@ -129,8 +116,6 @@ class GyroState:
             return GyroStatus.DISABLED
         if not self._open:
             return GyroStatus.DISCONNECTED
-        if self._calibrating_since is not None and now - self._calibrating_since <= CALIBRATION_SECONDS:
-            return GyroStatus.CALIBRATING
         reference = self._last_data_at if self._last_data_at is not None else self._opened_at
         if reference is None or now - reference > NO_SIGNAL_SECONDS:
             return GyroStatus.NO_SIGNAL

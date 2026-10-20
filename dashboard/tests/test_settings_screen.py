@@ -9,14 +9,12 @@ from PyQt6.QtWidgets import QLabel
 from app.config import AppConfig
 from app.gyro.protocol import GyroReading
 from app.gyro.state import GyroSnapshot, GyroStatus
-from app.masterinjection.signal import Signal
-from app.state.state import vehicle_state
 from app.ui.settings.screen import HINT, SettingsScreen
-from tests.helpers import key_press, parsed
+from tests.helpers import key_press
 
-PORT, CONNECT, ZERO, RECALIBRATE, TILT, RPM_MIN, RPM_MAX, SETTLE, MIN_TIME = range(9)
+PORT, CONNECT, ZERO, TILT, RPM_MIN, RPM_MAX, SETTLE, MIN_TIME = range(8)
 
-READING = GyroReading(t_ms=1, pitch=1.37, roll=-0.62, ax_g=0, ay_g=0, az_g=1, gx_dps=0, gy_dps=0, gz_dps=0, temp_c=31.4)
+READING = GyroReading(t_ms=1, pitch=1.37, roll=-0.62, ax_g=0, ay_g=0, az_g=1, temp_c=31.4)
 
 
 class FakeGyro:
@@ -53,10 +51,6 @@ class FakeGyro:
 
     def zero(self):
         self.calls.append(("zero",))
-        return self.open
-
-    def recalibrate(self):
-        self.calls.append(("recalibrate",))
         return self.open
 
 
@@ -104,7 +98,7 @@ def test_initial_content(env):
     assert "Configurações" in texts and "Giroscópio" in texts and "Ajuste de Ignição" in texts
     assert HINT in texts and HINT == "↑↓ Navegar | ←→ Alterar | Enter Executar | Esc Voltar"
     assert [label for label, _ in env.screen.row_texts()] == [
-        "Porta", "Conectar", "Zerar inclinação", "Recalibrar giroscópio", "Inclinação máxima", "RPM mínimo",
+        "Porta", "Conectar", "Zerar inclinação", "Inclinação máxima", "RPM mínimo",
         "RPM máximo", "Estabilização", "Tempo mínimo do cenário"]
     assert env.screen.selected_index == PORT and env.screen.status_text == ""
 
@@ -260,7 +254,7 @@ def test_connect_without_a_port_says_so(env):
     assert env.screen.status_text == "Escolha uma porta" and env.gyro.calls == []
 
 
-# ── Zero and recalibrate ─────────────────────────────────────────────────────────────────────────────────
+# ── Zero row ─────────────────────────────────────────────────────────────────────────────────
 
 def test_zero_is_sent(env):
     """Scenario: Zero sent."""
@@ -281,44 +275,12 @@ def test_zero_without_a_device(env):
     assert env.screen.status_text == "Giroscópio desconectado"
 
 
-def test_recalibration_is_sent_when_stopped(env):
-    """Scenario: Recalibrate stopped."""
-    env.gyro.open = True
-    vehicle_state.update({Signal.VSS: parsed(Signal.VSS, 0)})
-    env.select(RECALIBRATE)
+def test_there_is_no_row_to_recalibrate_the_device(env):
+    """Scenario: Zero row. The inclinometer has no gyroscope to calibrate, so the screen has no such row."""
+    labels = [label for label, _ in env.screen.row_texts()]
 
-    env.press(Qt.Key.Key_Return)
-
-    assert env.gyro.calls == [("recalibrate",)] and env.screen.status_text == "Comando enviado"
-
-
-def test_recalibration_is_refused_while_moving(env):
-    """Scenario: Recalibrate while moving."""
-    env.gyro.open = True
-    vehicle_state.update({Signal.VSS: parsed(Signal.VSS, 40)})
-    env.select(RECALIBRATE)
-
-    env.press(Qt.Key.Key_Return)
-
-    assert env.gyro.calls == [] and env.screen.status_text == "Pare o carro para recalibrar"
-
-
-def test_recalibration_with_an_unknown_speed_is_sent(env):
-    """Scenario: Recalibrate with VSS unknown."""
-    env.gyro.open = True
-    env.select(RECALIBRATE)
-
-    env.press(Qt.Key.Key_Return)
-
-    assert env.gyro.calls == [("recalibrate",)]
-
-
-def test_recalibration_without_a_device(env):
-    env.select(RECALIBRATE)
-
-    env.press(Qt.Key.Key_Return)
-
-    assert env.screen.status_text == "Giroscópio desconectado"
+    assert not any("alibr" in label for label in labels)
+    assert not hasattr(env.screen, "_send_recalibration")
 
 
 def test_left_and_right_do_nothing_on_action_rows(env):
@@ -353,7 +315,7 @@ def test_readout_without_a_device(env):
 
 @pytest.mark.parametrize("status, text", [
     (GyroStatus.DISABLED, "Desligado"), (GyroStatus.DISCONNECTED, "Desconectado"),
-    (GyroStatus.CALIBRATING, "Calibrando…"), (GyroStatus.NO_SIGNAL, "Sem sinal"),
+    (GyroStatus.NO_SIGNAL, "Sem sinal"),
     (GyroStatus.NOT_ZEROED, "Conectado, sem zero"), (GyroStatus.USABLE, "Conectado, zerado"),
 ])
 def test_state_texts(env, status, text):
@@ -371,9 +333,16 @@ def test_stale_readings_are_not_shown(env, status):
 
 def test_device_message_line(env):
     """Scenario: Device message."""
-    env.gyro.message = "Zero definido"
+    env.gyro.message = "COMANDO_DESCONHECIDO"
 
-    assert env.screen.readout_lines()[4] == "Mensagem: Zero definido"
+    assert env.screen.readout_lines()[4] == "Mensagem: COMANDO_DESCONHECIDO"
+
+
+def test_command_reply_message_line(env):
+    """Scenario: Command reply as message."""
+    env.gyro.message = "Z: OK"
+
+    assert env.screen.readout_lines()[4] == "Mensagem: Z: OK"
 
 
 def test_the_readout_is_drawn_and_refreshed_by_the_timer(env):

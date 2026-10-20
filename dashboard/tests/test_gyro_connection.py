@@ -1,15 +1,15 @@
 """Spec: openspec/specs/gyro-connection (the optional inclinometer)."""
 import pytest
 
-from app.gyro.protocol import GyroHeader, GyroMessage, GyroReading, parse_line
+from app.gyro.protocol import GyroCommandReply, GyroHeader, GyroMessage, GyroReading, parse_line
 from app.gyro.state import GyroState, GyroStatus
 
-DATA = "#D;12840;1.37;-0.62;-0.024;-0.011;1.000;0.12;-0.05;0.03;31.4;"
-HEADER = "#H;t_ms;pitch;roll;ax_g;ay_g;az_g;gx_dps;gy_dps;gz_dps;temp_c;"
+DATA = "#D;12840;1.37;-0.62;-0.024;-0.011;1.000;31.4;"
+HEADER = "#H;t_ms;pitch;roll;ax_g;ay_g;az_g;temp_c;"
 
 
 def data(t_ms=12840, pitch=1.37, roll=-0.62):
-    return f"#D;{t_ms};{pitch};{roll};-0.024;-0.011;1.000;0.12;-0.05;0.03;31.4;"
+    return f"#D;{t_ms};{pitch};{roll};-0.024;-0.011;1.000;31.4;"
 
 
 class Clock:
@@ -29,7 +29,7 @@ def test_data_line_is_a_reading():
     """Scenario: Data line."""
     reading = parse_line(DATA)
 
-    assert reading == GyroReading(12840, 1.37, -0.62, -0.024, -0.011, 1.0, 0.12, -0.05, 0.03, 31.4)
+    assert reading == GyroReading(12840, 1.37, -0.62, -0.024, -0.011, 1.0, 31.4)
 
 
 def test_carriage_return_is_ignored():
@@ -37,19 +37,29 @@ def test_carriage_return_is_ignored():
     assert parse_line(DATA + "\r\n") == parse_line(DATA)
 
 
-def test_data_line_with_nine_values_is_ignored():
+def test_data_line_with_six_values_is_ignored():
     """Scenario: Wrong number of values."""
-    assert parse_line("#D;12840;1.37;-0.62;-0.024;-0.011;1.000;0.12;-0.05;0.03;") is None
+    assert parse_line("#D;12840;1.37;-0.62;-0.024;-0.011;1.000;") is None
 
 
-def test_data_line_with_eleven_values_is_ignored():
+def test_data_line_with_eight_values_is_ignored():
     assert parse_line(DATA + "9;") is None
+
+
+def test_data_line_of_the_old_ten_value_format_is_ignored():
+    """Scenario: Wrong number of values (the gyroscope columns are gone)."""
+    assert parse_line("#D;12840;1.37;-0.62;-0.024;-0.011;1.000;0.12;-0.05;0.03;31.4;") is None
 
 
 def test_data_line_with_a_value_that_is_not_a_number_is_ignored():
     """Scenario: Not a number."""
-    assert parse_line("#D;12840;abc;-0.62;-0.024;-0.011;1.000;0.12;-0.05;0.03;31.4;") is None
-    assert parse_line("#D;12840;nan;-0.62;-0.024;-0.011;1.000;0.12;-0.05;0.03;31.4;") is None
+    assert parse_line("#D;12840;abc;-0.62;-0.024;-0.011;1.000;31.4;") is None
+
+
+def test_data_line_with_a_value_that_is_not_finite_is_ignored():
+    """Scenario: Not finite."""
+    assert parse_line("#D;12840;nan;-0.62;-0.024;-0.011;1.000;31.4;") is None
+    assert parse_line("#D;12840;inf;-0.62;-0.024;-0.011;1.000;31.4;") is None
 
 
 @pytest.mark.parametrize("line", ["hello;1;2;", "", ";", "D;1;2;", "#X;1;"])
@@ -64,7 +74,25 @@ def test_header_is_not_a_reading():
 
 
 def test_message_carries_its_text():
-    assert parse_line("#M;Zero definido;") == GyroMessage("Zero definido")
+    assert parse_line("#M;COMANDO_DESCONHECIDO;") == GyroMessage("COMANDO_DESCONHECIDO")
+
+
+@pytest.mark.parametrize("line, status", [("#Z;OK;", "OK"), ("#Z;OK;\r\n", "OK"), ("#Z;ERRO;", "ERRO")])
+def test_command_reply_carries_the_command_and_its_status(line, status):
+    """Scenario: Command reply."""
+    assert parse_line(line) == GyroCommandReply("#Z", status)
+
+
+@pytest.mark.parametrize("line", ["#Z;OK;EXTRA;", "#Z;", "#Z;;"])
+def test_command_reply_with_the_wrong_shape_is_ignored(line):
+    """Scenario: Command reply with the wrong shape."""
+    assert parse_line(line) is None
+
+
+@pytest.mark.parametrize("line", ["#C;OK;", "#C;CALIBRANDO;", "#R;OK;"])
+def test_replies_of_the_retired_commands_are_ignored(line):
+    """Scenario: Retired replies."""
+    assert parse_line(line) is None
 
 
 # ── State: helpers ───────────────────────────────────────────────────────────────────────────────────────
@@ -94,9 +122,9 @@ def stream(state, clock, seconds=0.5, start=1000, pitch=1.37):
 
 def test_latest_message_is_kept(state):
     """Scenario: Latest message kept."""
-    state.feed("#M;Zero definido;")
+    state.feed("#M;ENVIE_Z_COM_O_CARRO_EM_SOLO_PLANO_PARA_ZERAR;")
 
-    assert state.snapshot().message == "Zero definido"
+    assert state.snapshot().message == "ENVIE_Z_COM_O_CARRO_EM_SOLO_PLANO_PARA_ZERAR"
 
 
 def test_unknown_message_only_updates_the_text(state, clock):
@@ -104,13 +132,76 @@ def test_unknown_message_only_updates_the_text(state, clock):
     stream(state, clock)
     before = state.snapshot().status
 
-    state.feed("#M;Comando desconhecido;")
+    state.feed("#M;COMANDO_DESCONHECIDO;")
 
-    assert state.snapshot().message == "Comando desconhecido"
+    assert state.snapshot().message == "COMANDO_DESCONHECIDO"
     assert state.snapshot().status is before
 
 
-# ── Zero state ───────────────────────────────────────────────────────────────────────────────────────────
+def test_old_state_texts_do_nothing(state, clock):
+    """Scenario: Old state texts do nothing. A `#M` text never changes the zero flag."""
+    zeroed(state, clock)
+
+    state.feed("#M;ZERO_REMOVIDO;")
+    stream(state, clock, start=3000)
+
+    assert state.snapshot().status is GyroStatus.USABLE
+    assert state.snapshot().message == "ZERO_REMOVIDO"
+
+
+# ── Command replies ──────────────────────────────────────────────────────────────────────────────────────
+
+def test_command_reply_is_the_latest_message(state):
+    """Scenario: Zero acknowledged."""
+    state.feed("#Z;OK;")
+
+    assert state.snapshot().message == "Z: OK"
+
+
+def test_unknown_status_only_updates_the_message(state, clock):
+    """Scenario: Unknown status."""
+    stream(state, clock)
+
+    state.feed("#Z;ERRO;")
+    stream(state, clock, start=2000)
+
+    assert state.snapshot().message == "Z: ERRO"
+    assert state.snapshot().status is GyroStatus.NOT_ZEROED
+
+
+def test_reply_status_is_not_case_folded(state, clock):
+    """Scenario: Not case folded."""
+    stream(state, clock)
+
+    state.feed("#Z;ok;")
+    stream(state, clock, start=2000)
+
+    assert state.snapshot().message == "Z: ok"
+    assert state.snapshot().status is GyroStatus.NOT_ZEROED
+
+
+def test_message_is_the_last_of_texts_and_replies(state):
+    state.feed("#Z;OK;")
+    state.feed("#M;COMANDO_DESCONHECIDO;")
+    assert state.snapshot().message == "COMANDO_DESCONHECIDO"
+
+    state.feed("#Z;OK;")
+    assert state.snapshot().message == "Z: OK"
+
+
+def test_retired_replies_change_nothing(state, clock):
+    """Scenario: Retired replies. They are not even kept as the latest message."""
+    zeroed(state, clock)
+
+    for line in ("#R;OK;", "#C;CALIBRANDO;", "#C;OK;"):
+        state.feed(line)
+    stream(state, clock, start=3000)
+
+    assert state.snapshot().status is GyroStatus.USABLE
+    assert state.snapshot().message == "Z: OK"
+
+
+# ── Zero flag ───────────────────────────────────────────────────────────────────────────────────────────
 
 def test_a_new_link_is_not_zeroed(state, clock):
     """Scenario: Not zeroed at start."""
@@ -122,7 +213,7 @@ def test_a_new_link_is_not_zeroed(state, clock):
 def test_zero_defined_by_the_device(state, clock):
     """Scenario: Zeroed by the device."""
     stream(state, clock)
-    state.feed("#M;Zero definido;")
+    state.feed("#Z;OK;")
     stream(state, clock, start=2000)
 
     assert state.snapshot().status is GyroStatus.USABLE
@@ -137,7 +228,7 @@ def test_command_without_an_answer_does_not_zero(state, clock):
 
 def zeroed(state, clock):
     stream(state, clock)
-    state.feed("#M;Zero definido;")
+    state.feed("#Z;OK;")
     stream(state, clock, start=2000)
     assert state.snapshot().status is GyroStatus.USABLE
 
@@ -169,15 +260,6 @@ def test_time_moving_forward_keeps_the_zero(state, clock):
     assert state.snapshot().status is GyroStatus.USABLE
 
 
-def test_zero_removed_by_the_device(state, clock):
-    """Scenario: Zero removed."""
-    zeroed(state, clock)
-
-    state.feed("#M;Zero removido;")
-
-    assert state.snapshot().status is GyroStatus.NOT_ZEROED
-
-
 def test_reconnecting_loses_the_zero(state, clock):
     """Scenario: Reconnected."""
     zeroed(state, clock)
@@ -189,7 +271,7 @@ def test_reconnecting_loses_the_zero(state, clock):
     assert state.snapshot().status is GyroStatus.NOT_ZEROED
 
 
-# ── Signal presence ──────────────────────────────────────────────────────────────────────────────────────
+# ── Data stream presence ──────────────────────────────────────────────────────────────────────────────────────
 
 def test_stream_that_stops_is_no_signal(state, clock):
     """Scenario: Stream stops."""
@@ -225,46 +307,13 @@ def test_port_that_never_sends_is_no_signal_after_a_second(state, clock):
     assert state.snapshot().status is GyroStatus.NO_SIGNAL
 
 
-def test_silence_while_calibrating_is_not_no_signal(state, clock):
-    """Scenario: Pause during calibration."""
-    zeroed(state, clock)
-    state.feed("#M;Calibrando...;")
-
-    clock.advance(3)
-
-    assert state.snapshot().status is GyroStatus.CALIBRATING
-
-
-def test_calibration_that_never_ends_is_no_signal(state, clock):
-    """Scenario: Calibration never ends."""
-    zeroed(state, clock)
-    state.feed("#M;Calibrando...;")
-
-    clock.advance(11)
-
-    assert state.snapshot().status is GyroStatus.NO_SIGNAL
-
-
-# ── Calibration state ────────────────────────────────────────────────────────────────────────────────────
-
-def test_calibrating_message_starts_calibration_and_drops_the_zero(state, clock):
-    """Scenario: Calibrating."""
+def test_a_short_pause_is_still_signal(state, clock):
+    """Scenario: Short pause. The device pauses its stream for less than a second (zero, calibration capture)."""
     zeroed(state, clock)
 
-    state.feed("#M;Calibrando...;")
+    clock.advance(0.8)
 
-    assert state.snapshot().status is GyroStatus.CALIBRATING
-
-
-def test_calibration_ok_does_not_bring_the_zero_back(state, clock):
-    """Scenario: Calibration ends."""
-    zeroed(state, clock)
-    state.feed("#M;Calibrando...;")
-    clock.advance(2)
-    state.feed("#M;Calibracao ok;")
-    stream(state, clock, start=3000)
-
-    assert state.snapshot().status is GyroStatus.NOT_ZEROED
+    assert state.snapshot().status is GyroStatus.USABLE
 
 
 # ── Usable pitch ─────────────────────────────────────────────────────────────────────────────────────────
@@ -331,7 +380,7 @@ def test_disabling_forgets_the_link(state, clock):
 
 
 def test_zeroed_but_without_any_data_is_not_usable(state):
-    state.feed("#M;Zero definido;")
+    state.feed("#Z;OK;")
 
     assert state.snapshot().status is GyroStatus.NO_SIGNAL
 
@@ -539,15 +588,26 @@ def test_zero_command_is_written_with_a_line_break(ports, clock):
     assert ports.last.written == [b"#Z\n"]
 
 
-def test_recalibration_command_is_written_with_a_line_break(ports, clock):
-    """Scenario: Recalibrate."""
+def test_the_app_has_no_other_command_than_zero(ports, clock):
+    """Scenario: Zero command. The recalibration (#C) and the zero removal (#R) no longer exist."""
+    gyro = make("COM7", ports, clock)
+
+    assert not hasattr(gyro, "recalibrate")
+    assert not hasattr(gyro, "remove_zero")
+
+
+def test_sending_a_command_changes_no_state(ports, clock):
+    """Scenario: Sending changes nothing."""
     gyro = make("COM7", ports, clock)
     gyro.step()
-
-    assert gyro.recalibrate() is True
+    ports.last.lines.append(data(100))
     gyro.step()
 
-    assert ports.last.written == [b"#C\n"]
+    gyro.zero()
+    gyro.step()
+
+    assert ports.last.written == [b"#Z\n"]
+    assert gyro.snapshot().status is GyroStatus.NOT_ZEROED
 
 
 def test_command_with_the_port_closed_is_dropped(ports, clock):
@@ -556,7 +616,6 @@ def test_command_with_the_port_closed_is_dropped(ports, clock):
     gyro.step()
 
     assert gyro.zero() is False
-    assert gyro.recalibrate() is False
     ports.available.add("COM3")
     clock.advance(3)
     gyro.step()
@@ -580,13 +639,13 @@ def test_command_still_queued_when_the_port_is_lost_is_never_written_later(ports
 def test_lines_read_from_the_port_reach_the_state(ports, clock):
     gyro = make("COM7", ports, clock)
     gyro.step()
-    ports.last.lines.extend(["#M;Zero definido;", data(100)])
+    ports.last.lines.extend(["#Z;OK;", data(100)])
 
     gyro.step()
     gyro.step()
 
     snap = gyro.snapshot()
-    assert snap.status is GyroStatus.USABLE and snap.pitch == 1.37 and snap.message == "Zero definido"
+    assert snap.status is GyroStatus.USABLE and snap.pitch == 1.37 and snap.message == "Z: OK"
 
 
 def test_a_state_change_is_announced_once(ports, clock):
@@ -599,7 +658,7 @@ def test_a_state_change_is_announced_once(ports, clock):
     gyro.step()
     announced.clear()
 
-    ports.last.lines.append("#M;Zero definido;")
+    ports.last.lines.append("#Z;OK;")
     gyro.step()
     ports.last.lines.append(data(110))
     gyro.step()

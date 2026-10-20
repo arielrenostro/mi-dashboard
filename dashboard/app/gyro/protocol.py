@@ -1,21 +1,19 @@
-"""The inclinometer's serial protocol (Arduino with an MPU-6500, 115200 8N1): lines in, two commands out."""
+"""The inclinometer's serial protocol (Arduino with an accelerometer, 115200 8N1): lines in, one command out."""
 import math
 from dataclasses import dataclass
 from typing import Optional, Union
 
 BAUDRATE = 115200
 
-# Commands written to the device, each followed by "\n". The app never sends "#R" (remove the zero).
+# The only command written to the device, followed by "\n". (The gyroscope recalibration `#C` and the zero removal
+# `#R` no longer exist; the accelerometer calibration `#K...` is made on the bench with a serial terminal.)
 COMMAND_ZERO = "#Z"
-COMMAND_CALIBRATE = "#C"
+COMMANDS = (COMMAND_ZERO,)
 
-# Texts of the `#M` messages that change the state, compared exactly.
-MESSAGE_ZERO_SET = "Zero definido"
-MESSAGE_ZERO_REMOVED = "Zero removido"
-MESSAGE_CALIBRATING = "Calibrando..."
-MESSAGE_CALIBRATION_OK = "Calibracao ok"
+# Status of the command reply `#<CMD>;<STATUS>;` that changes the state, compared exactly (uppercase).
+STATUS_OK = "OK"
 
-_DATA_FIELDS = ("t_ms", "pitch", "roll", "ax_g", "ay_g", "az_g", "gx_dps", "gy_dps", "gz_dps", "temp_c")
+DATA_FIELDS = ("t_ms", "pitch", "roll", "ax_g", "ay_g", "az_g", "temp_c")
 
 
 @dataclass(frozen=True)
@@ -27,9 +25,6 @@ class GyroReading:
     ax_g: float
     ay_g: float
     az_g: float
-    gx_dps: float
-    gy_dps: float
-    gz_dps: float
     temp_c: float
 
 
@@ -44,13 +39,25 @@ class GyroMessage:
     text: str
 
 
-GyroLine = Union[GyroReading, GyroHeader, GyroMessage]
+@dataclass(frozen=True)
+class GyroCommandReply:
+    """A `#Z` line: the device's answer (ACK) to the command of the same name."""
+    command: str  # with the '#', one of COMMANDS
+    status: str
+
+    @property
+    def text(self) -> str:
+        """How the Settings screen shows it: the command letter without the '#', a colon and the status."""
+        return f"{self.command.lstrip('#')}: {self.status}"
+
+
+GyroLine = Union[GyroReading, GyroHeader, GyroMessage, GyroCommandReply]
 
 
 def parse_line(line: str) -> Optional[GyroLine]:
     """
     Split at ';', drop the empty last item (every line ends with ';') and let the first item decide.
-    Anything that is not a well-formed `#D`, `#H` or `#M` line gives None and never raises.
+    Anything that is not a well-formed `#D`, `#H`, `#M` or `#Z` reply line gives None and never raises.
     """
     items = line.rstrip("\r\n").split(";")
     if items and items[-1] == "":
@@ -64,11 +71,13 @@ def parse_line(line: str) -> Optional[GyroLine]:
         return GyroHeader()
     if tag == "#M":
         return GyroMessage(";".join(values))
+    if tag in COMMANDS:
+        return GyroCommandReply(tag, values[0]) if len(values) == 1 and values[0] else None
     return None
 
 
 def _parse_data(values: list) -> Optional[GyroReading]:
-    if len(values) != len(_DATA_FIELDS):
+    if len(values) != len(DATA_FIELDS):
         return None
     try:
         numbers = [float(v) for v in values]

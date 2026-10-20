@@ -8,7 +8,7 @@ from typing import Optional
 import serial
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from app.gyro.protocol import BAUDRATE, COMMAND_CALIBRATE, COMMAND_ZERO
+from app.gyro.protocol import BAUDRATE, COMMAND_ZERO
 from app.gyro.state import GyroState, GyroStatus
 
 logger = logging.getLogger(__name__)
@@ -89,10 +89,6 @@ class GyroConnection(QObject):
     def zero(self) -> bool:
         """Ask the device to take the current position as flat. False when the port is not open."""
         return self._send(COMMAND_ZERO)
-
-    def recalibrate(self) -> bool:
-        """Ask the device to recalibrate its gyroscope. False when the port is not open."""
-        return self._send(COMMAND_CALIBRATE)
 
     def _send(self, command: str) -> bool:
         if not self.is_open():

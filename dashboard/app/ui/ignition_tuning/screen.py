@@ -74,7 +74,6 @@ _TILT_GRAY = "#777777"
 _TILT_TEXTS = {
     GyroStatus.DISABLED: ("desligada", _TILT_GRAY),
     GyroStatus.DISCONNECTED: ("desconectada", _TILT_ORANGE),
-    GyroStatus.CALIBRATING: ("calibrando…", _TILT_ORANGE),
     GyroStatus.NO_SIGNAL: ("sem sinal", _TILT_ORANGE),
     GyroStatus.NOT_ZEROED: ("sem zero (G)", _TILT_ORANGE),
 }

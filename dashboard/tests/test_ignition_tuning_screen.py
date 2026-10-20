@@ -1044,7 +1044,6 @@ def test_inclination_box_when_usable(tilt_env, pitch, text, color):
     (GyroStatus.NOT_ZEROED, "Inclinação: sem zero (G)", "#FF8800"),     # Scenario: Not zeroed
     (GyroStatus.NO_SIGNAL, "Inclinação: sem sinal", "#FF8800"),         # Scenario: No signal
     (GyroStatus.DISCONNECTED, "Inclinação: desconectada", "#FF8800"),   # Scenario: Disconnected
-    (GyroStatus.CALIBRATING, "Inclinação: calibrando…", "#FF8800"),     # Scenario: Calibrating
     (GyroStatus.DISABLED, "Inclinação: desligada", "#777777"),          # Scenario: Disabled
 ])
 def test_inclination_box_when_not_usable(tilt_env, status, text, color):
@@ -1054,6 +1053,24 @@ def test_inclination_box_when_not_usable(tilt_env, status, text, color):
 
     assert shown == text
     assert color in style
+
+
+def test_inclination_box_never_reads_calibrating(tilt_env):
+    """Scenario: Calibrating. An old firmware's retired `#C;CALIBRANDO;` reply changes nothing in the box."""
+    from app.gyro.state import GyroState
+    state = GyroState()
+    state.set_enabled(True)
+    state.opened()
+    state.feed("#D;100;1.0;0.0;0.0;0.0;1.0;27.0;")
+    before = state.snapshot().status
+
+    state.feed("#C;CALIBRANDO;")
+    tilt_env.gyro.status = state.snapshot().status
+    shown, _ = box(tilt_env)
+
+    assert state.snapshot().status is before is GyroStatus.NOT_ZEROED
+    assert shown == "Inclinação: sem zero (G)"
+    assert "calibrando" not in shown
 
 
 def test_inclination_box_follows_the_configured_limit(tilt_env):

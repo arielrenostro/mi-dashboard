@@ -1,7 +1,7 @@
 # gyro-connection Specification
 
 ## Purpose
-Defines the optional inclinometer: the serial link to the Arduino with the MPU-6500, how its lines are read, the states the device can be in, the commands the app sends to it and when its pitch counts as usable. The device filters the angles and keeps the zero itself; the app stores no angle.
+Defines the optional inclinometer: the serial link to the Arduino with the accelerometer module, how its lines are read, the states the device can be in, the commands the app sends to it and when its pitch counts as usable. The device filters the angles and keeps the zero itself; the app stores no angle.
 
 ## Requirements
 
@@ -48,7 +48,7 @@ While `gyro.port` is not empty and the port is not open, the app SHALL try to op
 - **THEN** the ECU connection keeps working and no error overlay is shown
 
 ### Requirement: Line format
-A line SHALL end with `\n`; a trailing `\r` SHALL be ignored. A line SHALL be split at `;`, the last item (empty, because every line ends with `;`) SHALL be discarded, and the first item SHALL decide the meaning: `#D` is a data line, `#H` is the header sent once after the device starts, `#M` is a text message. A data line SHALL carry, after `#D`, exactly ten numeric values in this order: `t_ms`, `pitch` (degrees, positive = nose down), `roll` (degrees, positive = right side down), `ax_g`, `ay_g`, `az_g`, `gx_dps`, `gy_dps`, `gz_dps`, `temp_c`. A data line with any other number of values or with a value that is not a number SHALL be ignored. A line that starts with anything else SHALL be ignored. Ignored lines SHALL NOT change any state and SHALL NOT raise an error.
+A line SHALL end with `\n`; a trailing `\r` SHALL be ignored. A line SHALL be split at `;`, the last item (empty, because every line ends with `;`) SHALL be discarded, and the first item SHALL decide the meaning: `#D` is a data line, `#H` is the header sent once after the device starts, `#M` is a text message, and `#Z`, `#R` and `#C` are the device's replies to the commands of the same name (see "Command replies"). A data line SHALL carry, after `#D`, exactly ten numeric values in this order: `t_ms`, `pitch` (degrees, positive = nose down), `roll` (degrees, positive = right side down), `ax_g`, `ay_g`, `az_g`, `gx_dps`, `gy_dps`, `gz_dps`, `temp_c`. A command reply SHALL carry, after its tag, exactly one item, the status. A data line with any other number of values or with a value that is not a number SHALL be ignored, and so SHALL a command reply with any other number of items. A line that starts with anything else SHALL be ignored. Ignored lines SHALL NOT change any state and SHALL NOT raise an error.
 
 #### Scenario: Data line
 - **WHEN** the line `#D;12840;1.37;-0.62;-0.024;-0.011;1.000;0.12;-0.05;0.03;31.4;` arrives
@@ -66,6 +66,10 @@ A line SHALL end with `\n`; a trailing `\r` SHALL be ignored. A line SHALL be sp
 - **WHEN** a `#D` line carries `abc` as pitch
 - **THEN** it is ignored and the previous reading stays
 
+#### Scenario: Not finite
+- **WHEN** a `#D` line carries `nan` as pitch
+- **THEN** it is ignored and the previous reading stays
+
 #### Scenario: Unknown prefix
 - **WHEN** the line `hello;1;2;` arrives
 - **THEN** it is ignored
@@ -74,30 +78,42 @@ A line SHALL end with `\n`; a trailing `\r` SHALL be ignored. A line SHALL be sp
 - **WHEN** the `#H;t_ms;pitch;…;` line arrives
 - **THEN** it is not a reading (its effect is described in "Zero state")
 
+#### Scenario: Command reply
+- **WHEN** the line `#Z;OK;` arrives
+- **THEN** it is read as the reply `OK` to the command `#Z`
+
+#### Scenario: Command reply with the wrong shape
+- **WHEN** the line `#Z;OK;EXTRA;` or `#Z;` arrives
+- **THEN** it is ignored
+
 ### Requirement: Device messages
-A `#M` line SHALL carry one text after `#M`; the app SHALL keep the latest one for display. These texts SHALL change the state, compared exactly: `Zero definido` (the device is zeroed), `Zero removido` (the device is not zeroed), `Calibrando...` (the device is calibrating) and `Calibracao ok` (the calibration ended). Any other text SHALL only be kept as the latest message.
+A `#M` line SHALL carry one text after `#M`; the app SHALL keep the latest one for display. No `#M` text SHALL change the zero flag or the calibration state: those follow the command replies only. The texts are uppercase with `_` in place of a space and are shown as they come.
 
 #### Scenario: Latest message kept
-- **WHEN** `#M;Zero definido;` arrives
-- **THEN** the latest message reads `Zero definido`
+- **WHEN** `#M;ENVIE_Z_COM_O_CARRO_EM_SOLO_PLANO_PARA_ZERAR;` arrives
+- **THEN** the latest message reads `ENVIE_Z_COM_O_CARRO_EM_SOLO_PLANO_PARA_ZERAR`
 
 #### Scenario: Unknown message
-- **WHEN** `#M;Comando desconhecido;` arrives
-- **THEN** the latest message reads `Comando desconhecido` and no state changes
+- **WHEN** `#M;COMANDO_DESCONHECIDO;` arrives
+- **THEN** the latest message reads `COMANDO_DESCONHECIDO` and no state changes
+
+#### Scenario: Old state texts do nothing
+- **WHEN** zeroed is true and `#M;ZERO_REMOVIDO;` arrives
+- **THEN** the zero flag stays true and only the latest message changes
 
 ### Requirement: Zero state
-The app SHALL keep one flag, `zeroed`, and no angle offset. The flag SHALL become true only when the message `Zero definido` arrives (not when the command is sent). The flag SHALL become false when: the port is opened (every time); the message `Zero removido` arrives; the message `Calibrando...` arrives; a `#H` line arrives (the device restarted); a data line has `t_ms` lower than the previous data line (the device restarted); the port is closed. The app SHALL NOT send a zero command by itself at any moment.
+The app SHALL keep one flag, `zeroed`, and no angle offset. The flag SHALL become true only when the reply `#Z;OK` arrives (not when the command is sent). The flag SHALL become false when: the port is opened (every time); the reply `#R;OK` arrives; the reply `#C;CALIBRANDO` arrives; a `#H` line arrives (the device restarted); a data line has `t_ms` lower than the previous data line (the device restarted); the port is closed. The app SHALL NOT send a zero command by itself at any moment.
 
 #### Scenario: Not zeroed at start
 - **WHEN** the port has just been opened and data lines arrive
 - **THEN** `zeroed` is false
 
 #### Scenario: Zeroed by the device
-- **WHEN** `#M;Zero definido;` arrives
+- **WHEN** `#Z;OK;` arrives
 - **THEN** `zeroed` is true
 
 #### Scenario: Command sent but not acknowledged
-- **WHEN** the zero command is sent and no `Zero definido` message arrives
+- **WHEN** the zero command is sent and no `#Z;OK;` reply arrives
 - **THEN** `zeroed` stays false
 
 #### Scenario: Device restarted
@@ -109,7 +125,7 @@ The app SHALL keep one flag, `zeroed`, and no angle offset. The flag SHALL becom
 - **THEN** `zeroed` becomes false
 
 #### Scenario: Zero removed
-- **WHEN** `zeroed` is true and `#M;Zero removido;` arrives
+- **WHEN** `zeroed` is true and `#R;OK;` arrives
 - **THEN** `zeroed` becomes false
 
 #### Scenario: Reconnected
@@ -117,7 +133,7 @@ The app SHALL keep one flag, `zeroed`, and no angle offset. The flag SHALL becom
 - **THEN** `zeroed` is false
 
 ### Requirement: Signal presence
-While the port is open, the data stream SHALL be considered absent (`no signal`) when more than 1 second has passed since the last valid data line, or since the port was opened when none has arrived. While the device is calibrating (after `Calibrando...` and before `Calibracao ok`) the data stream SHALL NOT be considered absent for up to 10 seconds from `Calibrando...`; after that the calibration SHALL be treated as ended without `Calibracao ok` and the stream follows the 1 second rule. A valid data line SHALL end `no signal`.
+While the port is open, the data stream SHALL be considered absent (`no signal`) when more than 1 second has passed since the last valid data line, or since the port was opened when none has arrived. While the device is calibrating (after `#C;CALIBRANDO` and before `#C;OK`) the data stream SHALL NOT be considered absent for up to 10 seconds from `#C;CALIBRANDO`; after that the calibration SHALL be treated as ended without `#C;OK` and the stream follows the 1 second rule. A valid data line SHALL end `no signal`.
 
 #### Scenario: Stream stops
 - **WHEN** the last valid data line is 1.5 seconds old
@@ -128,23 +144,27 @@ While the port is open, the data stream SHALL be considered absent (`no signal`)
 - **THEN** the signal is present again
 
 #### Scenario: Pause during calibration
-- **WHEN** `Calibrando...` arrived 3 seconds ago and no data line arrived since
+- **WHEN** `#C;CALIBRANDO;` arrived 3 seconds ago and no data line arrived since
 - **THEN** the state is `calibrating`, not `no signal`
 
 #### Scenario: Calibration never ends
-- **WHEN** `Calibrando...` arrived 11 seconds ago and no data line arrived since
+- **WHEN** `#C;CALIBRANDO;` arrived 11 seconds ago and no data line arrived since
 - **THEN** the state is `no signal`
 
 ### Requirement: Calibration state
-After `Calibrando...` the state SHALL be `calibrating` until `Calibracao ok` arrives or 10 seconds pass. `Calibracao ok` SHALL NOT make `zeroed` true: the device does not state that a zero survives the recalibration, so the user zeroes again.
+After `#C;CALIBRANDO` the state SHALL be `calibrating` until `#C;OK` arrives or 10 seconds pass. `#C;OK` SHALL NOT make `zeroed` true: the device does not state that a zero survives the recalibration, so the user zeroes again.
 
 #### Scenario: Calibrating
-- **WHEN** `#M;Calibrando...;` arrives
+- **WHEN** `#C;CALIBRANDO;` arrives
 - **THEN** the state is `calibrating` and `zeroed` is false
 
 #### Scenario: Calibration ends
-- **WHEN** `#M;Calibracao ok;` arrives after `Calibrando...`
+- **WHEN** `#C;OK;` arrives after `#C;CALIBRANDO;`
 - **THEN** the state is not `calibrating` and `zeroed` is false
+
+#### Scenario: Boot calibration
+- **WHEN** the device boots and sends `#C;CALIBRANDO;`, `#C;OK;` and then the `#H` line
+- **THEN** the state is not `calibrating` after `#C;OK;` and `zeroed` is false
 
 ### Requirement: Usable pitch
 The inclination SHALL be usable only when the port is open, the signal is present, the device is not calibrating and `zeroed` is true. The usable pitch SHALL be the `pitch` of the latest valid data line. When the inclination is not usable there SHALL be no pitch value. The state shown to the user SHALL be exactly one of, in this priority: `disabled`, `disconnected`, `calibrating`, `no signal`, `not zeroed`, `usable`. The roll SHALL NOT take part in this decision.
@@ -166,7 +186,7 @@ The inclination SHALL be usable only when the port is open, the signal is presen
 - **THEN** the state is `usable`
 
 ### Requirement: Commands to the device
-The app SHALL be able to send the zero command (`#Z`) and the gyroscope recalibration command (`#C`), each written as the command followed by `\n`. A command SHALL be sent only while the port is open; otherwise it SHALL be dropped and the caller SHALL be told that it was not sent. The app SHALL NOT send `#R`. Commands SHALL be written by the connection's own thread, so the caller never blocks on the serial port.
+The app SHALL be able to send the zero command (`#Z`) and the gyroscope recalibration command (`#C`), each written in uppercase as the command followed by `\n`. A command SHALL be sent only while the port is open; otherwise it SHALL be dropped and the caller SHALL be told that it was not sent. The app SHALL NOT send `#R`. Commands SHALL be written by the connection's own thread, so the caller never blocks on the serial port. Sending a command SHALL NOT change any state: only the device's reply does (see "Command replies").
 
 #### Scenario: Zero
 - **WHEN** the port is open and the zero command is requested
@@ -179,6 +199,10 @@ The app SHALL be able to send the zero command (`#Z`) and the gyroscope recalibr
 #### Scenario: Port closed
 - **WHEN** the port is not open and the zero command is requested
 - **THEN** nothing is written and the caller is told that it was not sent
+
+#### Scenario: Sending changes nothing
+- **WHEN** `#C` is written and no reply arrives
+- **THEN** the state is not `calibrating`
 
 ### Requirement: Available ports
 The app SHALL be able to list the serial ports available on the machine, by name, so the Settings screen can offer them. Listing SHALL NOT open any port.
@@ -197,3 +221,22 @@ The latest valid reading (pitch, roll and temperature), the state and the latest
 #### Scenario: Data lines are not announced
 - **WHEN** 100 valid data lines arrive and nothing else changes
 - **THEN** no announcement is made
+
+### Requirement: Command replies
+The device acknowledges each command with a line `#<CMD>;<STATUS>;`, compared exactly (uppercase). These replies SHALL change the state: `#Z;OK` (the device is zeroed), `#R;OK` (the device is not zeroed), `#C;CALIBRANDO` (the device started a gyroscope calibration) and `#C;OK` (the calibration ended). Any other status of a known command SHALL only be kept as the latest message. Every command reply SHALL also be kept as the latest message, in the form `<CMD>: <STATUS>` with the command letter and no `#` (`Z: OK`, `R: OK`, `C: CALIBRANDO`, `C: OK`); the latest message is the last of the `#M` texts and the command replies to arrive.
+
+#### Scenario: Zero acknowledged
+- **WHEN** `#Z;OK;` arrives
+- **THEN** the latest message reads `Z: OK`
+
+#### Scenario: Calibration reply as message
+- **WHEN** `#C;CALIBRANDO;` arrives
+- **THEN** the latest message reads `C: CALIBRANDO`
+
+#### Scenario: Unknown status
+- **WHEN** `#Z;ERRO;` arrives
+- **THEN** the latest message reads `Z: ERRO` and no state changes
+
+#### Scenario: Not case folded
+- **WHEN** `#Z;ok;` arrives
+- **THEN** the latest message reads `Z: ok` and `zeroed` does not become true

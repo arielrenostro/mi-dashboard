@@ -503,8 +503,8 @@ def test_a_setting_changed_on_the_settings_screen_reaches_the_ignition_screen(wi
     window.show_screen("settings")
     settings = window._screens["settings"]
     settings.keyPressEvent(key_press(Qt.Key.Key_Down))  # Conectar
-    for _ in range(4):
-        settings.keyPressEvent(key_press(Qt.Key.Key_Down))  # Inclinação máxima ... RPM mínimo
+    for _ in range(3):
+        settings.keyPressEvent(key_press(Qt.Key.Key_Down))  # Zerar inclinação ... RPM mínimo
     settings.keyPressEvent(key_press(Qt.Key.Key_Down))  # RPM máximo
     assert settings.row_texts()[settings.selected_index][0] == "RPM máximo"
 
