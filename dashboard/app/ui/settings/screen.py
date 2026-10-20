@@ -196,7 +196,6 @@ class SettingsScreen(Screen):
             label = QLabel()
             label.setFont(QFont("Arial", size))
             label.setStyleSheet(f"color: {color}; padding-left: 16px;")
-            label.setWordWrap(True)
             self._wizard_labels.append(label)
             column.addWidget(label)
         panel.setVisible(False)
@@ -324,8 +323,10 @@ class SettingsScreen(Screen):
         for label, text in zip(self._readout_labels, self.readout_lines()):
             label.setText(text)
         for label, text in zip(self._wizard_labels, self.wizard_lines()):
-            label.setText(text)
+            label.setText(text.replace(". ", ".\n"))  # one sentence per line: a wrapped label is clipped in the column
         self._status_label.setText(self._status)
+        if self._wizard is not None:
+            self.layout().activate()  # the panel changes height with its text; do not wait for the next event
 
     def _show_wizard(self, shown: bool):
         self._rows_container.setVisible(not shown)
