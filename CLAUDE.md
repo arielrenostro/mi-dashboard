@@ -10,7 +10,7 @@ Real-time automotive ECU telemetry dashboard for the Master Injection ECU. It re
 
 ```
 dashboard/      the dashboard app (main.py, app/, tests/, resources/, requirements*.txt, pytest.ini, config.json, venvs)
-inclinometer/   the optional inclinometer (Arduino firmware `inclinometro_6500.ino` and its README)
+inclinometer/   the optional inclinometer (PlatformIO firmware in `src/main.cpp` and its README)
 docs/           images and video used by the READMEs
 openspec/       specs and changes for the whole repository
 .claude/        Claude Code commands and skills

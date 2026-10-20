@@ -2,7 +2,7 @@
 
 An optional inclinometer for the [dashboard](../README.md): an Arduino with an accelerometer module (the GY-521, with an MPU-6050 or MPU-6500) that tells the ignition tuning screen when the car is not level. A slope changes the load the engine needs, so samples taken uphill or downhill are not comparable with samples taken on the flat.
 
-The firmware is [`inclinometro_6500.ino`](inclinometro_6500.ino), an Arduino IDE sketch with **no library** besides the ones that ship with the Arduino core (`Wire`, `EEPROM`). The angle comes from the accelerometer alone: the gyroscope is not used. This page describes what the sketch does and what the dashboard expects from it.
+The firmware is a [PlatformIO](https://platformio.org) project (`platformio.ini`: board `nanoatmega328new`, framework Arduino) whose code is [`src/main.cpp`](src/main.cpp), with **no library** besides the ones that ship with the Arduino core (`Wire`, `EEPROM`). The angle comes from the accelerometer alone: the gyroscope is not used. This page describes what the firmware does and what the dashboard expects from it.
 
 How the dashboard uses the device (setup, the manual zero, when the analysis samples, the inclination box) is in the [Dashboard README](../dashboard/README.md#inclinometer-optional). The behavior the app expects is specified in [`openspec/specs/gyro-connection/spec.md`](../openspec/specs/gyro-connection/spec.md), and the firmware in [`openspec/specs/inclinometer-firmware/spec.md`](../openspec/specs/inclinometer-firmware/spec.md).
 
@@ -15,10 +15,21 @@ How the dashboard uses the device (setup, the manual zero, when the analysis sam
 
 ## Hardware
 
-- Arduino board (the sketch comments mention Nano / Uno) with a **GY-521** or any MPU-6050 / MPU-6500 module. The sketch reads the registers the two chips share and only reports the chip identity at boot (`#M;WHO_AM_I_70;` for an MPU-6500, `#M;WHO_AM_I_68;` for an MPU-6050); it never refuses a chip because of it.
-- Wiring: `VCC` to 5 V (module with regulator) or 3.3 V, `GND` to `GND`, `SDA` to `A4`, `SCL` to `A5`. I2C address `0x68` (`AD0` to `GND`, the one the sketch uses) or `0x69` (`AD0` to `VCC`, needs `MPU_ADDR` changed in the sketch).
+- Arduino board (the firmware comments mention Nano / Uno) with a **GY-521** or any MPU-6050 / MPU-6500 module. The firmware reads the registers the two chips share and only reports the chip identity at boot (`#M;WHO_AM_I_70;` for an MPU-6500, `#M;WHO_AM_I_68;` for an MPU-6050); it never refuses a chip because of it.
+- Wiring: `VCC` to 5 V (module with regulator) or 3.3 V, `GND` to `GND`, `SDA` to `A4`, `SCL` to `A5`. I2C address `0x68` (`AD0` to `GND`, the one the firmware uses) or `0x69` (`AD0` to `VCC`, needs `MPU_ADDR` changed in `src/main.cpp`).
 - Serial link to the PC, opened by the dashboard on the port set in `gyro.port` (for example `COM7`).
-- Orientation assumed by the sketch: X = front of the car, Y = left, Z = up. Angle convention: **positive pitch = nose down**, positive roll = right side down. **Mount the module aligned with the car**: a module turned about the vertical axis mixes some roll into the pitch, which shows on a road that slopes sideways.
+- Orientation assumed by the firmware: X = front of the car, Y = left, Z = up. Angle convention: **positive pitch = nose down**, positive roll = right side down. **Mount the module aligned with the car**: a module turned about the vertical axis mixes some roll into the pitch, which shows on a road that slopes sideways.
+
+## Build and upload
+
+From `inclinometer/`, with the board connected:
+
+```
+pio run -t upload        # compile and flash
+pio device monitor       # serial monitor at 115200 (monitor_speed in platformio.ini)
+```
+
+The firmware is checked against the dashboard's protocol by `dashboard/tests/test_inclinometer_firmware_contract.py`, which reads `src/main.cpp` as text; keep its path in that test when the source moves.
 
 ## Serial link
 
@@ -34,7 +45,7 @@ raw accelerometer --(offset, gain per axis)--> g --(low-pass, 0.2 s)--> pitch = 
 ```
 
 - There is no integration, so **the angle does not drift**: put the module back level and it reads 0 again in about half a second.
-- The low-pass filter has a time constant of 0.2 s (`TAU_S` in the sketch). A smaller value answers faster and passes more engine and road vibration.
+- The low-pass filter has a time constant of 0.2 s (`TAU_S` in `src/main.cpp`). A smaller value answers faster and passes more engine and road vibration.
 - Accelerating or braking reads as a slope (error of about `a/g` radians: 0.05 g is about 3°). That is acceptable here: the analysis then refuses to sample, which is what you want at a steady cruise.
 - Without the [calibration](#accelerometer-calibration) the offset is 0 and the gain 1. A module can have a large zero-g offset (one GY-521 read 0.69 g flat instead of 1.00 g), so calibrate once after flashing.
 
@@ -103,7 +114,7 @@ Information only, never a state change; the app keeps the latest text for displa
 
 Do it once after flashing a module. It finds the offset and gain of each axis and stores them in the board's EEPROM, so they survive a reset. The easy way is the **Calibrar acelerômetro** wizard on the dashboard's Settings screen ([Dashboard README](../dashboard/README.md#accelerometer-calibration)), which sends the commands below, waits for each answer and shows the result; **Ver calibração** sends `#KP` and **Restaurar calibração** sends `#KR`. A saved or restored calibration makes the app forget the zero (the device keeps the pitch and roll zero it took with the old calibration), so zero again.
 
-The same commands can be typed in a serial terminal at 115200 (the Arduino IDE serial monitor, set to "Newline"), with the dashboard disconnected from the port.
+The same commands can be typed in a serial terminal at 115200 (`pio device monitor`, or any other terminal set to send a newline), with the dashboard disconnected from the port.
 
 Put the board on a flat surface, **still**, with the axis below pointing **up** (`U`) or **down** (`D`), and send the command. Each one averages about 0.5 s and answers `#K<axis><sense>;OK;`:
 

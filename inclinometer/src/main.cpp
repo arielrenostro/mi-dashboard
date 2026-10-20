@@ -24,7 +24,8 @@
     #Z\n   zera pitch/roll na posição atual (média de ~0,12 s, a placa deve estar parada)   ->  #Z;OK;
     outro comando (inclusive os antigos #C e #R)                                              ->  #M;COMANDO_DESCONHECIDO;
 
-  CALIBRAÇÃO DO ACELERÔMETRO (uma vez, na bancada, com um terminal serial; guardada na EEPROM)
+  CALIBRAÇÃO DO ACELERÔMETRO (uma vez por módulo; guardada na EEPROM). O dashboard faz isso na tela de
+  Configurações ("Calibrar acelerômetro"); os mesmos comandos funcionam num terminal serial (pio device monitor)
     Com a placa PARADA e o eixo indicado apontando PARA CIMA (U) ou PARA BAIXO (D), envie:
       #KXU #KXD #KYU #KYD #KZU #KZD     cada um faz a média de ~0,5 s e responde  #K<eixo><sentido>;OK;
     Ao completar as 6 posições calcula  offset = (cima+baixo)/2  e  ganho = (cima-baixo)/2, grava e envia
